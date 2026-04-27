@@ -1,0 +1,10 @@
+{
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "tsconfig.json": "tsconfig.*.json, env.d.ts, jsconfig*,",
+    "vite.config.ts": " vite.config*, vitest.config.*, cypress.config.*, playwright.config.*",
+    "package.json": "package-lock.json, pnpm*, .yarnrc*, yarn*, .eslint*, eslint*, .prettier*, prettier*, .editorconfig",
+    ".env": ".env.*",
+    "auto-imports.d.ts": "auto-imports.d.ts, components.d.ts, typed-router.d.ts,vite-env.d.ts",
+  }
+}

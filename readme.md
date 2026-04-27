@@ -1,0 +1,2 @@
+# Gloss Mod Manager (web)
+
