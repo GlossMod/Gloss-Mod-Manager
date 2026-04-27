@@ -37,58 +37,65 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/law/': RouteRecordInfo<
-      '/law/',
-      '/law',
+    '/docs/cooperation': RouteRecordInfo<
+      '/docs/cooperation',
+      '/docs/cooperation',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/auth': RouteRecordInfo<
-      '/law/auth',
-      '/law/auth',
+    '/docs/faq': RouteRecordInfo<
+      '/docs/faq',
+      '/docs/faq',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/chat': RouteRecordInfo<
-      '/law/chat',
-      '/law/chat',
+    '/docs/feedback': RouteRecordInfo<
+      '/docs/feedback',
+      '/docs/feedback',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/document': RouteRecordInfo<
-      '/law/document',
-      '/law/document',
+    '/docs/getting-started': RouteRecordInfo<
+      '/docs/getting-started',
+      '/docs/getting-started',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/orders': RouteRecordInfo<
-      '/law/orders',
-      '/law/orders',
+    '/docs/install': RouteRecordInfo<
+      '/docs/install',
+      '/docs/install',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/profile': RouteRecordInfo<
-      '/law/profile',
-      '/law/profile',
+    '/docs/mcp': RouteRecordInfo<
+      '/docs/mcp',
+      '/docs/mcp',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/recharge': RouteRecordInfo<
-      '/law/recharge',
-      '/law/recharge',
+    '/docs/translate': RouteRecordInfo<
+      '/docs/translate',
+      '/docs/translate',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/law/settings': RouteRecordInfo<
-      '/law/settings',
-      '/law/settings',
+    '/docs/use': RouteRecordInfo<
+      '/docs/use',
+      '/docs/use',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/games/': RouteRecordInfo<
+      '/games/',
+      '/games',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -112,51 +119,57 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/law/index.vue': {
+    'src/pages/docs/cooperation.vue': {
       routes:
-        | '/law/'
+        | '/docs/cooperation'
       views:
         | never
     }
-    'src/pages/law/auth.vue': {
+    'src/pages/docs/faq.vue': {
       routes:
-        | '/law/auth'
+        | '/docs/faq'
       views:
         | never
     }
-    'src/pages/law/chat.vue': {
+    'src/pages/docs/feedback.vue': {
       routes:
-        | '/law/chat'
+        | '/docs/feedback'
       views:
         | never
     }
-    'src/pages/law/document.vue': {
+    'src/pages/docs/getting-started.vue': {
       routes:
-        | '/law/document'
+        | '/docs/getting-started'
       views:
         | never
     }
-    'src/pages/law/orders.vue': {
+    'src/pages/docs/install.vue': {
       routes:
-        | '/law/orders'
+        | '/docs/install'
       views:
         | never
     }
-    'src/pages/law/profile.vue': {
+    'src/pages/docs/mcp.vue': {
       routes:
-        | '/law/profile'
+        | '/docs/mcp'
       views:
         | never
     }
-    'src/pages/law/recharge.vue': {
+    'src/pages/docs/translate.vue': {
       routes:
-        | '/law/recharge'
+        | '/docs/translate'
       views:
         | never
     }
-    'src/pages/law/settings.vue': {
+    'src/pages/docs/use.vue': {
       routes:
-        | '/law/settings'
+        | '/docs/use'
+      views:
+        | never
+    }
+    'src/pages/games/index.vue': {
+      routes:
+        | '/games/'
       views:
         | never
     }

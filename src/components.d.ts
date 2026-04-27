@@ -11,6 +11,10 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    Accordion: typeof import('./components/ui/accordion/Accordion.vue')['default']
+    AccordionContent: typeof import('./components/ui/accordion/AccordionContent.vue')['default']
+    AccordionItem: typeof import('./components/ui/accordion/AccordionItem.vue')['default']
+    AccordionTrigger: typeof import('./components/ui/accordion/AccordionTrigger.vue')['default']
     Badge: typeof import('./components/ui/badge/Badge.vue')['default']
     Button: typeof import('./components/ui/button/Button.vue')['default']
     Card: typeof import('./components/ui/card/Card.vue')['default']
@@ -20,9 +24,10 @@ declare module 'vue' {
     CardFooter: typeof import('./components/ui/card/CardFooter.vue')['default']
     CardHeader: typeof import('./components/ui/card/CardHeader.vue')['default']
     CardTitle: typeof import('./components/ui/card/CardTitle.vue')['default']
-    IconArrowRight: typeof import('lucide-vue-next')['ArrowRight']
-    IconSparkles: typeof import('lucide-vue-next')['Sparkles']
+    DocsLayout: typeof import('./components/DocsLayout.vue')['default']
+    Footer: typeof import('./components/Footer.vue')['default']
     Layout: typeof import('./components/Layout.vue')['default']
+    Navbar: typeof import('./components/Navbar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Switch: typeof import('./components/ui/switch/Switch.vue')['default']
