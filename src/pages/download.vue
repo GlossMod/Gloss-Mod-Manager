@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import Downloads from "@/components/Downloads.vue";
 import { useLatestReleaseDownloads } from "@/lib/downloads";
+import {
+    createBreadcrumbJsonLd,
+    createSoftwareApplicationJsonLd,
+    createWebPageJsonLd,
+    useSeoMeta,
+} from "@/lib/seo";
+
+const pageTitle = "下载 Gloss Mod Manager";
+const pageDescription =
+    "下载 Gloss Mod Manager 最新版本，获取 Windows、macOS 与 Linux 桌面端安装包，安全免费地管理游戏 Mod。";
 
 const {
     latestVersion,
@@ -9,6 +19,21 @@ const {
     isReleaseLoading,
     releaseError,
 } = useLatestReleaseDownloads();
+
+useSeoMeta({
+    title: pageTitle,
+    description: pageDescription,
+    path: "/download",
+    keywords: ["GMM 下载", "Gloss Mod Manager 安装包", "Mod 管理器下载"],
+    structuredData: [
+        createWebPageJsonLd(pageTitle, pageDescription, "/download"),
+        createSoftwareApplicationJsonLd(),
+        createBreadcrumbJsonLd([
+            { name: "首页", path: "/" },
+            { name: "下载", path: "/download" },
+        ]),
+    ],
+});
 </script>
 
 <template>

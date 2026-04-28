@@ -13,6 +13,13 @@ import {
     platformLabels,
     useLatestReleaseDownloads,
 } from "@/lib/downloads";
+import {
+    DEFAULT_SEO_DESCRIPTION,
+    DEFAULT_SEO_TITLE,
+    createSoftwareApplicationJsonLd,
+    createWebSiteJsonLd,
+    useSeoMeta,
+} from "@/lib/seo";
 
 const { detectedPlatform, isReleaseLoading, preferredDownload } =
     useLatestReleaseDownloads();
@@ -31,6 +38,21 @@ const downloadButtonText = computed(() => {
     }
 
     return `下载 ${platformLabels[detectedPlatform.value]} 版`;
+});
+
+useSeoMeta({
+    title: DEFAULT_SEO_TITLE,
+    description: DEFAULT_SEO_DESCRIPTION,
+    path: "/",
+    keywords: [
+        "Gloss Mod Manager",
+        "GMM 下载",
+        "AI Mod 管理",
+        "Windows Mod 管理器",
+        "macOS Mod 管理器",
+        "Linux Mod 管理器",
+    ],
+    structuredData: [createWebSiteJsonLd(), createSoftwareApplicationJsonLd()],
 });
 </script>
 

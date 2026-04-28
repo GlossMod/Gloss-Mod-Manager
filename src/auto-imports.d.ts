@@ -6,9 +6,14 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const DEFAULT_SEO_DESCRIPTION: typeof import('./lib/seo').DEFAULT_SEO_DESCRIPTION
+  const DEFAULT_SEO_TITLE: typeof import('./lib/seo').DEFAULT_SEO_TITLE
+  const DEFAULT_SITE_URL: typeof import('./lib/seo').DEFAULT_SITE_URL
   const EffectScope: typeof import('vue').EffectScope
   const RELEASE_API_URL: typeof import('./lib/downloads').RELEASE_API_URL
   const RELEASE_PAGE_URL: typeof import('./lib/downloads').RELEASE_PAGE_URL
+  const SITE_NAME: typeof import('./lib/seo').SITE_NAME
+  const SITE_URL: typeof import('./lib/seo').SITE_URL
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const cn: typeof import('./lib/utils').cn
@@ -20,6 +25,8 @@ declare global {
   const controlledComputed: typeof import('@vueuse/core').controlledComputed
   const controlledRef: typeof import('@vueuse/core').controlledRef
   const createApp: typeof import('vue').createApp
+  const createBreadcrumbJsonLd: typeof import('./lib/seo').createBreadcrumbJsonLd
+  const createCanonicalUrl: typeof import('./lib/seo').createCanonicalUrl
   const createEventHook: typeof import('@vueuse/core').createEventHook
   const createGlobalState: typeof import('@vueuse/core').createGlobalState
   const createHeadingSlug: typeof import('./lib/docs').createHeadingSlug
@@ -28,9 +35,12 @@ declare global {
   const createRef: typeof import('@vueuse/core').createRef
   const createReusableTemplate: typeof import('@vueuse/core').createReusableTemplate
   const createSharedComposable: typeof import('@vueuse/core').createSharedComposable
+  const createSoftwareApplicationJsonLd: typeof import('./lib/seo').createSoftwareApplicationJsonLd
   const createTemplatePromise: typeof import('@vueuse/core').createTemplatePromise
   const createUniqueHeadingSlug: typeof import('./lib/docs').createUniqueHeadingSlug
   const createUnrefFn: typeof import('@vueuse/core').createUnrefFn
+  const createWebPageJsonLd: typeof import('./lib/seo').createWebPageJsonLd
+  const createWebSiteJsonLd: typeof import('./lib/seo').createWebSiteJsonLd
   const customRef: typeof import('vue').customRef
   const debouncedRef: typeof import('@vueuse/core').debouncedRef
   const debouncedWatch: typeof import('@vueuse/core').debouncedWatch
@@ -46,6 +56,7 @@ declare global {
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
+  const getDocDescription: typeof import('./lib/docs').getDocDescription
   const getPreferredDownload: typeof import('./lib/downloads').getPreferredDownload
   const getRenderableMarkdown: typeof import('./lib/docs').getRenderableMarkdown
   const groupDownloadsByPlatform: typeof import('./lib/downloads').groupDownloadsByPlatform
@@ -254,6 +265,7 @@ declare global {
   const useScriptTag: typeof import('@vueuse/core').useScriptTag
   const useScroll: typeof import('@vueuse/core').useScroll
   const useScrollLock: typeof import('@vueuse/core').useScrollLock
+  const useSeoMeta: typeof import('./lib/seo').useSeoMeta
   const useSessionStorage: typeof import('@vueuse/core').useSessionStorage
   const useShare: typeof import('@vueuse/core').useShare
   const useSlots: typeof import('vue').useSlots
@@ -327,4 +339,7 @@ declare global {
   // @ts-ignore
   export type { PlatformKey, DetectedPlatformKey, GithubReleaseAsset, DownloadItem } from './lib/downloads'
   import('./lib/downloads')
+  // @ts-ignore
+  export type { SeoMetaOptions, StructuredData, BreadcrumbItem } from './lib/seo'
+  import('./lib/seo')
 }

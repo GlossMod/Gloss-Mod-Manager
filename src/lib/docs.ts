@@ -65,6 +65,17 @@ const removeInlineMarkdown = (value: string) =>
         .replace(/[*_~]/g, "")
         .trim();
 
+const escapeRegex = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const truncateText = (value: string, maxLength: number) => {
+    if (value.length <= maxLength) {
+        return value;
+    }
+
+    return `${value.slice(0, maxLength - 1).trim()}…`;
+};
+
 export const createHeadingSlug = (title: string) =>
     encodeURIComponent(
         removeInlineMarkdown(title)
@@ -331,4 +342,30 @@ export const getRenderableMarkdown = (content: string) => {
         .replace(/^:::$/gm, "")
         .replace(/<style[\s\S]*?<\/style>/gi, "")
         .trim();
+};
+
+export const getDocDescription = (docRecord: DocRecord, maxLength = 150) => {
+    const { body, frontmatter } = stripFrontmatter(docRecord.content);
+    const descriptionMatch = frontmatter.match(/^description:\s*(.+)$/m);
+
+    if (descriptionMatch?.[1]) {
+        return truncateText(
+            stripWrappingQuotes(descriptionMatch[1]),
+            maxLength,
+        );
+    }
+
+    const plainText = body
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/!\[[^\]]*\]\([^\)]+\)/g, " ")
+        .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/[#>*_~|\[\]()`-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(new RegExp(`^${escapeRegex(docRecord.title)}\\s*`), "")
+        .trim();
+
+    return truncateText(plainText || docRecord.title, maxLength);
 };

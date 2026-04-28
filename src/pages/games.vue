@@ -3,6 +3,29 @@ import { ref, computed } from "vue";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-vue-next";
+import {
+    createBreadcrumbJsonLd,
+    createWebPageJsonLd,
+    useSeoMeta,
+} from "@/lib/seo";
+
+const pageTitle = "支持的游戏列表";
+const pageDescription =
+    "查看 Gloss Mod Manager 支持的 150 多款热门游戏，覆盖赛博朋克 2077、博德之门 3、艾尔登法环、黑神话：悟空等游戏的 Mod 管理。";
+
+useSeoMeta({
+    title: pageTitle,
+    description: pageDescription,
+    path: "/games",
+    keywords: ["支持的游戏", "游戏 Mod 列表", "GMM 支持游戏"],
+    structuredData: [
+        createWebPageJsonLd(pageTitle, pageDescription, "/games"),
+        createBreadcrumbJsonLd([
+            { name: "首页", path: "/" },
+            { name: "支持的游戏", path: "/games" },
+        ]),
+    ],
+});
 
 // 静态抽取的支持游戏列表
 const gamesList = [
@@ -224,7 +247,7 @@ const filteredGames = computed(() => {
                 添加适配规则。
             </p>
             <Button variant="secondary" as-child>
-                <RouterLink to="/docs/getting-started"
+                <RouterLink to="/docs/Install"
                     >我该如何开始配置环境？</RouterLink
                 >
             </Button>
