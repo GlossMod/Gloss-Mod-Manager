@@ -64,7 +64,7 @@ import {
                         as-child
                         class="w-full sm:w-auto h-12 px-8 text-base"
                     >
-                        <RouterLink to="/docs/getting-started">
+                        <RouterLink to="/docs">
                             阅读文档参考
                             <ArrowRight class="ml-2 h-5 w-5" />
                         </RouterLink>

@@ -1,59 +1,86 @@
 <script setup lang="ts">
-const sidebarLinks = [
-    {
-        title: "入门指南",
-        links: [
-            { name: "介绍与下载", path: "/docs/getting-started" },
-            { name: "安装与卸载 Mod", path: "/docs/install" },
-            { name: "运行和使用", path: "/docs/use" },
-        ],
-    },
-    {
-        title: "高阶与配置",
-        links: [
-            { name: "MCP 服务器集成", path: "/docs/mcp" },
-            { name: "支持的游戏列表", path: "/games" },
-        ],
-    },
-    {
-        title: "社区与贡献",
-        links: [
-            { name: "翻译软件", path: "/docs/translate" },
-            { name: "常见问题 (FAQ)", path: "/docs/faq" },
-            { name: "项目合作", path: "/docs/cooperation" },
-            { name: "意见反馈", path: "/docs/feedback" },
-        ],
-    },
-];
+import { ChevronDown, ListTree } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import { useRoute } from "vue-router";
+import { docsNavGroups, resolveDocByPath } from "@/lib/docs";
+
+const route = useRoute();
+const openGroups = ref(new Set(docsNavGroups.map((section) => section.title)));
+
+const currentDoc = computed(() => resolveDocByPath(route.path));
+const pageHeadings = computed(() => currentDoc.value?.headings ?? []);
+
+const isActiveDocPath = (path: string) => {
+    const routePath = route.path.toLowerCase();
+    const linkPath = path.toLowerCase();
+
+    return linkPath === "/docs"
+        ? routePath === linkPath
+        : routePath === linkPath || routePath.startsWith(`${linkPath}/`);
+};
+
+const isSectionActive = (links: { routePath: string }[]) =>
+    links.some((link) => isActiveDocPath(link.routePath));
+
+const isGroupOpen = (title: string) => openGroups.value.has(title);
+
+const toggleGroup = (title: string) => {
+    const nextOpenGroups = new Set(openGroups.value);
+
+    if (nextOpenGroups.has(title)) {
+        nextOpenGroups.delete(title);
+    } else {
+        nextOpenGroups.add(title);
+    }
+
+    openGroups.value = nextOpenGroups;
+};
 </script>
 
 <template>
     <div
-        class="container max-w-screen-2xl mx-auto px-4 md:px-8 py-8 flex flex-col md:flex-row gap-8 lg:gap-12 flex-1"
+        class="container max-w-screen-2xl mx-auto px-4 md:px-8 py-8 grid grid-cols-1 gap-8 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_14rem] flex-1"
     >
         <!-- Sidebar Navigation -->
         <aside
-            class="w-full md:w-64 lg:w-72 shrink-0 md:sticky md:top-20 self-start md:h-[calc(100vh-6rem)] overflow-y-auto"
+            class="w-full lg:sticky lg:top-20 self-start lg:h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border/70 bg-background/70 p-3 shadow-sm"
         >
-            <div class="space-y-8 pr-4">
-                <div v-for="section in sidebarLinks" :key="section.title">
-                    <h4 class="font-semibold mb-3 text-sm text-foreground">
-                        {{ section.title }}
-                    </h4>
-                    <ul class="space-y-2.5">
-                        <li v-for="link in section.links" :key="link.path">
+            <div class="space-y-1">
+                <div v-for="section in docsNavGroups" :key="section.title">
+                    <button
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/80"
+                        :class="
+                            isSectionActive(section.links)
+                                ? 'text-foreground'
+                                : 'text-muted-foreground'
+                        "
+                        @click="toggleGroup(section.title)"
+                    >
+                        <span>{{ section.title }}</span>
+                        <ChevronDown
+                            class="h-4 w-4 transition-transform"
+                            :class="
+                                isGroupOpen(section.title) ? '' : '-rotate-90'
+                            "
+                        />
+                    </button>
+                    <ul
+                        v-show="isGroupOpen(section.title)"
+                        class="mt-1 space-y-1 pb-2"
+                    >
+                        <li v-for="link in section.links" :key="link.routePath">
                             <RouterLink
-                                :to="link.path"
-                                class="block text-sm transition-colors hover:text-primary"
-                                exact-active-class="text-primary font-medium bg-primary/10 -mx-3 px-3 py-1.5 rounded-md"
+                                :to="link.routePath"
+                                class="block rounded-md px-3 py-1.5 text-sm leading-6 transition-colors hover:bg-muted/70 hover:text-foreground"
+                                exact-active-class="text-primary font-medium bg-primary/10"
                                 :class="
-                                    $route.path.startsWith(link.path) &&
-                                    link.path !== '/docs'
-                                        ? 'text-primary font-medium bg-primary/10 -mx-3 px-3 py-1.5 rounded-md'
+                                    isActiveDocPath(link.routePath)
+                                        ? 'text-primary font-medium bg-primary/10'
                                         : 'text-muted-foreground'
                                 "
                             >
-                                {{ link.name }}
+                                {{ link.title }}
                             </RouterLink>
                         </li>
                     </ul>
@@ -62,70 +89,219 @@ const sidebarLinks = [
         </aside>
 
         <!-- Main Content Area -->
-        <main class="flex-1 w-full min-w-0 max-w-4xl pb-16">
+        <main class="w-full min-w-0 max-w-4xl pb-16">
             <div class="prose-container">
                 <slot />
             </div>
         </main>
+
+        <aside
+            v-if="pageHeadings.length > 0"
+            class="hidden xl:block sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border/70 bg-background/70 p-4 shadow-sm"
+        >
+            <div
+                class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground"
+            >
+                <ListTree class="h-4 w-4" />
+                页面导航
+            </div>
+            <nav class="space-y-1 text-sm">
+                <a
+                    v-for="heading in pageHeadings"
+                    :key="`${heading.id}-${heading.title}`"
+                    :href="`#${heading.id}`"
+                    class="block rounded-md py-1.5 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+                    :class="[
+                        heading.level === 3 ? 'pl-5 pr-2 text-xs' : 'px-2',
+                        heading.level === 4 ? 'pl-8 pr-2 text-xs' : '',
+                        route.hash === `#${heading.id}`
+                            ? 'text-primary bg-primary/10'
+                            : '',
+                    ]"
+                >
+                    {{ heading.title }}
+                </a>
+            </nav>
+        </aside>
     </div>
 </template>
 
 <style>
-@reference "../style.css";
-
-/* Basic prose-like styling since we don't have @tailwindcss/typography */
 .prose-container {
-    @apply text-foreground;
+    color: var(--foreground);
 }
+
 .prose-container h1 {
-    @apply text-3xl md:text-4xl font-extrabold tracking-tight mb-6 mt-2;
+    margin-top: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 1.875rem;
+    font-weight: 800;
+    line-height: 1.2;
 }
+
 .prose-container h2 {
-    @apply text-2xl md:text-3xl font-bold tracking-tight mb-4 mt-10 border-b border-border pb-2;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    scroll-margin-top: 6rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.25;
 }
+
 .prose-container h3 {
-    @apply text-xl font-semibold mb-4 mt-8;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    scroll-margin-top: 6rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.4;
 }
+
+.prose-container h4 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    scroll-margin-top: 6rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
 .prose-container p {
-    @apply leading-7 mb-6 text-foreground/90;
+    margin-bottom: 1.5rem;
+    color: color-mix(in oklab, var(--foreground) 90%, transparent);
+    line-height: 1.75rem;
 }
-.prose-container ul {
-    @apply list-disc pl-6 mb-6 space-y-2;
-}
+
+.prose-container ul,
 .prose-container ol {
-    @apply list-decimal pl-6 mb-6 space-y-2;
+    margin-bottom: 1.5rem;
+    padding-left: 1.5rem;
 }
+
+.prose-container ul {
+    list-style: disc;
+}
+
+.prose-container ol {
+    list-style: decimal;
+}
+
 .prose-container li {
-    @apply leading-7 text-foreground/90;
+    color: color-mix(in oklab, var(--foreground) 90%, transparent);
+    line-height: 1.75rem;
 }
+
+.prose-container li + li {
+    margin-top: 0.5rem;
+}
+
 .prose-container a {
-    @apply font-medium text-primary underline underline-offset-4 decoration-primary/30 hover:decoration-primary;
+    color: var(--primary);
+    font-weight: 500;
+    text-decoration-line: underline;
+    text-decoration-color: color-mix(in oklab, var(--primary) 30%, transparent);
+    text-underline-offset: 4px;
 }
+
+.prose-container a:hover {
+    text-decoration-color: var(--primary);
+}
+
 .prose-container blockquote {
-    @apply mt-6 border-l-4 border-primary/50 pl-4 py-1 italic text-muted-foreground bg-muted/30 rounded-r-lg;
+    margin-top: 1.5rem;
+    border-left: 4px solid color-mix(in oklab, var(--primary) 50%, transparent);
+    border-radius: 0 0.5rem 0.5rem 0;
+    background: color-mix(in oklab, var(--muted) 30%, transparent);
+    color: var(--muted-foreground);
+    padding: 0.25rem 0 0.25rem 1rem;
+    font-style: italic;
 }
+
 .prose-container code {
-    @apply relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold;
+    border-radius: 0.25rem;
+    background: var(--muted);
+    padding: 0.2rem 0.3rem;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
 }
+
 .prose-container pre {
-    @apply bg-muted p-4 rounded-lg overflow-x-auto mb-6 text-sm flex;
+    display: flex;
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    background: var(--muted);
+    padding: 1rem;
+    font-size: 0.875rem;
 }
+
 .prose-container pre code {
-    @apply bg-transparent p-0 text-foreground font-normal;
+    background: transparent;
+    color: var(--foreground);
+    padding: 0;
+    font-weight: 400;
 }
+
+.prose-container img,
+.prose-container iframe {
+    margin-bottom: 1.5rem;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
 .prose-container img {
-    @apply rounded-xl border border-border shadow-sm mb-6 max-w-full h-auto;
+    height: auto;
 }
+
+.prose-container kbd {
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--muted);
+    padding: 0.125rem 0.375rem;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-size: 0.75rem;
+}
+
 .prose-container hr {
-    @apply my-8 border-border;
+    margin: 2rem 0;
+    border-color: var(--border);
 }
+
 .prose-container table {
-    @apply w-full text-left border-collapse mb-6;
+    width: 100%;
+    margin-bottom: 1.5rem;
+    border-collapse: collapse;
+    text-align: left;
 }
-.prose-container th {
-    @apply border-b border-border py-2 px-4 font-semibold text-foreground bg-muted/30;
-}
+
+.prose-container th,
 .prose-container td {
-    @apply border-b border-border py-2 px-4;
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+}
+
+.prose-container th {
+    background: color-mix(in oklab, var(--muted) 30%, transparent);
+    color: var(--foreground);
+    font-weight: 600;
+}
+
+@media (min-width: 768px) {
+    .prose-container h1 {
+        font-size: 2.25rem;
+    }
+
+    .prose-container h2 {
+        font-size: 1.875rem;
+    }
 }
 </style>

@@ -37,60 +37,18 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/docs/cooperation': RouteRecordInfo<
-      '/docs/cooperation',
-      '/docs/cooperation',
+    '/docs/': RouteRecordInfo<
+      '/docs/',
+      '/docs',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/docs/faq': RouteRecordInfo<
-      '/docs/faq',
-      '/docs/faq',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/docs/feedback': RouteRecordInfo<
-      '/docs/feedback',
-      '/docs/feedback',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/docs/getting-started': RouteRecordInfo<
-      '/docs/getting-started',
-      '/docs/getting-started',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/docs/install': RouteRecordInfo<
-      '/docs/install',
-      '/docs/install',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/docs/mcp': RouteRecordInfo<
-      '/docs/mcp',
-      '/docs/mcp',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/docs/translate': RouteRecordInfo<
-      '/docs/translate',
-      '/docs/translate',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/docs/use': RouteRecordInfo<
-      '/docs/use',
-      '/docs/use',
-      Record<never, never>,
-      Record<never, never>,
+    '/docs/[...slug]': RouteRecordInfo<
+      '/docs/[...slug]',
+      '/docs/:slug(.*)',
+      { slug: ParamValue<true> },
+      { slug: ParamValue<false> },
       | never
     >,
     '/games/': RouteRecordInfo<
@@ -119,51 +77,15 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/docs/cooperation.vue': {
+    'src/pages/docs/index.vue': {
       routes:
-        | '/docs/cooperation'
+        | '/docs/'
       views:
         | never
     }
-    'src/pages/docs/faq.vue': {
+    'src/pages/docs/[...slug].vue': {
       routes:
-        | '/docs/faq'
-      views:
-        | never
-    }
-    'src/pages/docs/feedback.vue': {
-      routes:
-        | '/docs/feedback'
-      views:
-        | never
-    }
-    'src/pages/docs/getting-started.vue': {
-      routes:
-        | '/docs/getting-started'
-      views:
-        | never
-    }
-    'src/pages/docs/install.vue': {
-      routes:
-        | '/docs/install'
-      views:
-        | never
-    }
-    'src/pages/docs/mcp.vue': {
-      routes:
-        | '/docs/mcp'
-      views:
-        | never
-    }
-    'src/pages/docs/translate.vue': {
-      routes:
-        | '/docs/translate'
-      views:
-        | never
-    }
-    'src/pages/docs/use.vue': {
-      routes:
-        | '/docs/use'
+        | '/docs/[...slug]'
       views:
         | never
     }

@@ -3,19 +3,19 @@ const footerLinks = [
     {
         title: "文档与资源",
         links: [
-            { name: "开始使用", path: "/docs/getting-started" },
-            { name: "安装与卸载", path: "/docs/install" },
+            { name: "开始使用", path: "/docs" },
+            { name: "安装与卸载", path: "/docs/Install" },
             { name: "支持的游戏", path: "/games" },
-            { name: "MCP 配置", path: "/docs/mcp" },
-            { name: "翻译支持", path: "/docs/translate" },
+            { name: "MCP 配置", path: "/docs/MCP" },
+            { name: "翻译支持", path: "/docs/Translate" },
         ],
     },
     {
         title: "获取帮助",
         links: [
-            { name: "常见问题 (FAQ)", path: "/docs/faq" },
-            { name: "意见反馈", path: "/docs/feedback" },
-            { name: "项目合作", path: "/docs/cooperation" },
+            { name: "常见问题 (FAQ)", path: "/docs/FQA/CantStart" },
+            { name: "意见反馈", path: "/docs/Feedback" },
+            { name: "项目合作", path: "/docs/Cooperation" },
             {
                 name: "GitHub Issues",
                 href: "https://github.com/GlossMod/Gloss-Mod-Manager/issues",

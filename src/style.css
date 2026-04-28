@@ -122,3 +122,44 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+/* 滚动条美化 */
+.scrollbar-hover::-webkit-scrollbar,
+.scrollbar-hover::-webkit-scrollbar-button,
+.scrollbar-hover::-webkit-scrollbar-thumb,
+.scrollbar-hover::-webkit-scrollbar-track {
+    visibility: hidden;
+    width: 3px;
+
+    &:hover {
+        visibility: visible;
+        width: 7px
+    }
+}
+
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px
+}
+
+::-webkit-scrollbar-button {
+    width: 0;
+    height: 0
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #b1b1b1;
+    -webkit-background-clip: padding-box;
+    background-clip: padding-box;
+    border-radius: 5px;
+    -webkit-box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .1), inset 0 -1px 0 rgba(0, 0, 0, .07);
+    border: 3px solid transparent;
+    transition: .5s all
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: #b1b1b1;
+    -webkit-box-shadow: inset 1px 1px 1px rgba(0, 0, 0, .25);
+    border: 0 solid transparent
+}

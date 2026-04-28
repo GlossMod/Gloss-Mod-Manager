@@ -11,7 +11,7 @@ const navLinks = [
     { name: "首页", path: "/" },
     { name: "文档", path: "/docs" },
     { name: "支持的游戏", path: "/games" },
-    { name: "MCP 服务器", path: "/docs/mcp" },
+    { name: "MCP 服务器", path: "/docs/MCP" },
 ];
 
 const toggleMenu = () => {
@@ -21,7 +21,7 @@ const toggleMenu = () => {
 
 <template>
     <header
-        class="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        class="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60"
     >
         <div
             class="container flex h-14 max-w-screen-2xl items-center px-4 md:px-8 mx-auto"

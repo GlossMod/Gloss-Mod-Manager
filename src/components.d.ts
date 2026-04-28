@@ -27,6 +27,7 @@ declare module 'vue' {
     DocsLayout: typeof import('./components/DocsLayout.vue')['default']
     Footer: typeof import('./components/Footer.vue')['default']
     Layout: typeof import('./components/Layout.vue')['default']
+    MarkdownDoc: typeof import('./components/MarkdownDoc.vue')['default']
     Navbar: typeof import('./components/Navbar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
