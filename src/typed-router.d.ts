@@ -51,8 +51,15 @@ declare module 'vue-router/auto-routes' {
       { slug: ParamValue<false> },
       | never
     >,
-    '/games/': RouteRecordInfo<
-      '/games/',
+    '/download': RouteRecordInfo<
+      '/download',
+      '/download',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/games': RouteRecordInfo<
+      '/games',
       '/games',
       Record<never, never>,
       Record<never, never>,
@@ -89,9 +96,15 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/games/index.vue': {
+    'src/pages/download.vue': {
       routes:
-        | '/games/'
+        | '/download'
+      views:
+        | never
+    }
+    'src/pages/games.vue': {
+      routes:
+        | '/games'
       views:
         | never
     }

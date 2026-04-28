@@ -183,7 +183,7 @@ const filteredGames = computed(() => {
             v-if="filteredGames.length > 0"
             class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
         >
-            <Card
+            <!-- <Card
                 v-for="game in filteredGames"
                 :key="game"
                 class="bg-card hover:bg-muted/50 border-border/50 hover:border-primary/30 transition-all cursor-default"
@@ -196,7 +196,10 @@ const filteredGames = computed(() => {
                         >{{ game }}</CardTitle
                     >
                 </CardHeader>
-            </Card>
+            </Card> -->
+            <Item v-for="game in filteredGames" :key="game">
+                <ItemContent>{{ game }}</ItemContent>
+            </Item>
         </div>
 
         <!-- Empty State -->

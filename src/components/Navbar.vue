@@ -9,6 +9,7 @@ const isMenuOpen = ref(false);
 
 const navLinks = [
     { name: "首页", path: "/" },
+    { name: "下载", path: "/download" },
     { name: "文档", path: "/docs" },
     { name: "支持的游戏", path: "/games" },
     { name: "MCP 服务器", path: "/docs/MCP" },

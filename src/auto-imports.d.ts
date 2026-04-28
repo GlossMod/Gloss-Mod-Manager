@@ -7,6 +7,8 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const RELEASE_API_URL: typeof import('./lib/downloads').RELEASE_API_URL
+  const RELEASE_PAGE_URL: typeof import('./lib/downloads').RELEASE_PAGE_URL
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const cn: typeof import('./lib/utils').cn
@@ -34,15 +36,19 @@ declare global {
   const debouncedWatch: typeof import('@vueuse/core').debouncedWatch
   const defineAsyncComponent: typeof import('vue').defineAsyncComponent
   const defineComponent: typeof import('vue').defineComponent
+  const detectPlatform: typeof import('./lib/downloads').detectPlatform
   const docs: typeof import('./lib/docs').docs
   const docsNavGroups: typeof import('./lib/docs').docsNavGroups
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
   const extendRef: typeof import('@vueuse/core').extendRef
+  const formatFileSize: typeof import('./lib/downloads').formatFileSize
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
+  const getPreferredDownload: typeof import('./lib/downloads').getPreferredDownload
   const getRenderableMarkdown: typeof import('./lib/docs').getRenderableMarkdown
+  const groupDownloadsByPlatform: typeof import('./lib/downloads').groupDownloadsByPlatform
   const h: typeof import('vue').h
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
   const inject: typeof import('vue').inject
@@ -77,7 +83,9 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const parseReleaseAssets: typeof import('./lib/downloads').parseReleaseAssets
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
+  const platformLabels: typeof import('./lib/downloads').platformLabels
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
   const reactify: typeof import('@vueuse/core').reactify
@@ -199,6 +207,7 @@ declare global {
   const useIntervalFn: typeof import('@vueuse/core').useIntervalFn
   const useKeyModifier: typeof import('@vueuse/core').useKeyModifier
   const useLastChanged: typeof import('@vueuse/core').useLastChanged
+  const useLatestReleaseDownloads: typeof import('./lib/downloads').useLatestReleaseDownloads
   const useLink: typeof import('vue-router').useLink
   const useLocalStorage: typeof import('@vueuse/core').useLocalStorage
   const useMagicKeys: typeof import('@vueuse/core').useMagicKeys
@@ -315,4 +324,7 @@ declare global {
   // @ts-ignore
   export type { DocRecord, DocHeading, DocNavGroup } from './lib/docs'
   import('./lib/docs')
+  // @ts-ignore
+  export type { PlatformKey, DetectedPlatformKey, GithubReleaseAsset, DownloadItem } from './lib/downloads'
+  import('./lib/downloads')
 }
