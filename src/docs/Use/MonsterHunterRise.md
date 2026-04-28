@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 怪物猎人崛起 Mod 安装教程
+# 怪物猎人崛起
 
 
 ## 前置工作

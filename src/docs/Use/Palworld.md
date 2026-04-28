@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 幻兽帕鲁 Mod 安装教程
+# 幻兽帕鲁
 
 
 ## 前置工作

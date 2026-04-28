@@ -1,46 +1,35 @@
 ---
-title: Gloss Mod Manager V2 使用指南
+title: GMM 入门
 ---
+# GMM 入门
 
-# Gloss Mod Manager V2
+## 什么是GMM？
 
-Gloss Mod Manager 是一个面向多游戏、多 Mod 格式的通用 Mod 管理器。V2 版本围绕“更轻、更快、更容易扩展”重构了核心体验，适合玩家日常启停 Mod，也适合游戏社区维护自己的适配方案。
+[Gloss Mod Manager](https://mod.3dmgame.com/mod/197445) 简称GMM, 是一款综合性的现代化游戏模组管理器.
+是我在今年6月份着手开发的一款Mod管理器, 
+其目的有2个：
+1. 降低使用Mod的门槛，让更多的玩家不再因为不会装而放弃Mod这一乐趣
+2. 作为国内最大(自称)的Mod资源网站, 怎么能没有一个属于自己的官方工具呢？
 
-## V2 带来了什么
+于是 GMM 就诞生了
 
-- 更轻量的安装体积，核心程序体积大幅缩小。
-- 更清晰的游戏库、Mod 列表、启用状态和操作反馈。
-- 更稳定的安装流程，减少重复移动文件和手动备份的成本。
-- 支持通过 `.gmm` 文件分发游戏适配信息，方便社区共享。
-- 提供 MCP 与 Skills 能力，让 AI 工具可以辅助分析目录、生成适配配置和处理常见问题。
 
-## 下载渠道
+## 如何下载？
+目前由我更新维护的可用下载渠道有以下几种:
+- [3DM Mod站](https://mod.3dmgame.com/mod/197445)
+- [GitHub](https://github.com/GlossMod/Gloss-Mod-Manager/releases)
+- [网盘](https://pan.aoe.top/Tools/GMM)
 
-推荐从官方发布渠道获取 V2：
+除此之外, 其他均非我本人发布, 如果你是从其他地方下载的，我不能保证你的是否存在木马病毒，
+但可以通过以下几种方法分别是否有被挂马:
+- GMM 无论是在安装还是运行, 以及使用时, 均不会也不需要向你的电脑请求**管理员权限**  (<span style="color: #55ffef;">除非你在安装时选择了"为所有用户安装"或安装到了磁盘的"Program Files"目录</span>)
+- GMM 完成通过了 [ViruStotal](https://www.virustotal.com/gui/home/upload) 的查毒验证, 你可以自行将你下载的文件上传到 ViruStotal 中进行查毒检查, 如果出现任何一项标红, 请立刻删除, 并重新从我上面提供的链接进行下载
 
-- GitHub Releases：适合获取最新版本和更新日志。
-- Microsoft Store：适合希望自动更新的 Windows 用户。
-- 合作社区镜像：适合访问 GitHub 不稳定的用户。
+![图片](https://mod.3dmgame.com/static/upload/mod/202308/MOD64d5ae5a7e2a0.png@webp)
 
-下载后请优先使用最新稳定版。历史安装包名称和旧目录结构不再作为 V2 的主要参考。
+## 如何安装？
+直接双击运行下载的 `Gloss Mod Manager_1.*.*.exe` 程序,
+然后正常下一步、安装、完成 即可, 
+你可以将它安装到除`Program Files`和`Program Files (x86)`以外的任意目录
+即使存在中文和空格也没事  (理论上没事)
 
-## 快速开始
-
-1. 安装并启动 Gloss Mod Manager。
-2. 在游戏库中添加或导入一个游戏。
-3. 将 Mod 压缩包、文件夹或 `.gmm` 文件导入到对应游戏。
-4. 在 Mod 列表中启用、禁用、排序或卸载 Mod。
-5. 遇到适配问题时，优先查看 [常见问题](FQA/CantStart.md) 与 [安装与卸载 Mod](Install.md)。
-
-## 文档地图
-
-- [开始使用](Use.md)：了解 V2 的基础工作流。
-- [安装与卸载 Mod](Install.md)：处理 Mod 导入、启用、禁用与卸载。
-- [MCP 与 AI 助手](MCP.md)：让 AI 工具读取项目上下文并协助配置。
-- [翻译与本地化](Translate.md)：参与界面翻译和语言包维护。
-- [反馈问题](Feedback.md)：提交可复现的问题报告。
-- [合作与共建](Cooperation.md)：为游戏社区、工具作者和内容平台提供合作入口。
-
-## 文档状态
-
-当前文档以 V2 中文版本为主。英文版本会在 V2 文档结构稳定后再整理发布。

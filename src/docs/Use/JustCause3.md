@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 正当防卫3 Mod 安装教程
+# 正当防卫3
 
 
 ### 配置启动项

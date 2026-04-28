@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# GTA5 Mod 安装教程
+# GTA5
 
 > 最新版本以将增强版和传承版 分开处理, 请根据自己的游戏版本选择对应的游戏和前置包
 

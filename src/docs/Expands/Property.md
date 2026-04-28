@@ -1,6 +1,6 @@
 
 
-# 属性介绍
+# 属性说明
 
 ## GlossGameId 
 - 类型: `number`

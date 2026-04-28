@@ -20,8 +20,14 @@ const {
                 <div>下载 Gloss Mod Manager</div>
                 <Badge>{{ latestVersion }}</Badge>
             </h1>
+            <div class="mb-4 mt-4">
+                <Button variant="link" as-child>
+                    <a href="https://pan.aoe.top/Tools/GMM" target="_blank">
+                        下载旧版本 <icon-arrow-right class="ml-2 h-5 w-5" />
+                    </a>
+                </Button>
+            </div>
         </section>
-
         <Downloads
             :items="downloads"
             :detected-platform="detectedPlatform"

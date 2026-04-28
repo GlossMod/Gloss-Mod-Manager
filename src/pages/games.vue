@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-vue-next";
 

@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 艾尔登法环 Mod安装教程
+# 艾尔登法环
 
 ## 前置工作
 

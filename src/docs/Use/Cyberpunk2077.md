@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 赛博朋克2077 Mod 安装教程
+# 赛博朋克2077
 
 ## 前置工作
 

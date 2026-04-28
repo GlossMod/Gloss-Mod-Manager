@@ -44,14 +44,14 @@ const downloadButtonText = computed(() => {
                 >
                     Gloss Mod Manager
                 </h1>
-                <div class="text-2xl">
-                    下一代
+                <Badge variant="secondary" class="text-xl pl-4 pr-4">
+                    你的下一代
                     <span
-                        class="text-transparent bg-clip-text bg-linear-to-r from-primary to-primary/60"
+                        class="bg-clip-text bg-linear-to-r from-primary to-primary/60"
                         >智能游戏模组</span
                     >
                     管理器
-                </div>
+                </Badge>
                 <p
                     class="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed"
                 >
@@ -74,13 +74,24 @@ const downloadButtonText = computed(() => {
                         {{ downloadButtonText }}
                     </Button>
                     <Button
+                        variant="outline"
+                        size="lg"
+                        as-child
+                        class="w-full sm:w-auto h-12 px-8 text-base"
+                    >
+                        <RouterLink to="/download">
+                            其他版本
+                            <icon-ellipsis class="ml-2 h-5 w-5" />
+                        </RouterLink>
+                    </Button>
+                    <Button
                         size="lg"
                         variant="outline"
                         as-child
                         class="w-full sm:w-auto h-12 px-8 text-base"
                     >
                         <RouterLink to="/docs">
-                            阅读文档参考
+                            阅读文档
                             <ArrowRight class="ml-2 h-5 w-5" />
                         </RouterLink>
                     </Button>

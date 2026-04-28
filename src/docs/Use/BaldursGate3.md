@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 博德之门3 Mod 安装教程
+# 博德之门3
 
 ## 前置工作
 

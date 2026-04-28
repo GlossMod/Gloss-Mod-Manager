@@ -2,7 +2,7 @@
 titleTemplate: Gloss Mod Manager
 ---
 
-# 荒野大镖客2 Mod 安装教程
+# 荒野大镖客2
 
 ## 前置工作
 
