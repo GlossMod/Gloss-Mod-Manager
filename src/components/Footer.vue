@@ -82,12 +82,12 @@ const footerLinks = [
                                 </a>
                             </template>
                             <template v-else-if="link.path">
-                                <RouterLink
+                                <NuxtLink
                                     :to="link.path"
                                     class="text-sm text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     {{ link.name }}
-                                </RouterLink>
+                                </NuxtLink>
                             </template>
                         </li>
                     </ul>

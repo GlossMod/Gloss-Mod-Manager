@@ -65,7 +65,7 @@ useSeoMeta(() => {
         <div v-else class="rounded-lg border border-dashed border-border p-8">
             <h1>文档不存在</h1>
             <p>当前路径没有匹配到 Markdown 文档。</p>
-            <RouterLink to="/docs">返回文档首页</RouterLink>
+            <NuxtLink to="/docs">返回文档首页</NuxtLink>
         </div>
     </DocsLayout>
 </template>

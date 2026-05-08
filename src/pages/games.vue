@@ -247,9 +247,7 @@ const filteredGames = computed(() => {
                 添加适配规则。
             </p>
             <Button variant="secondary" as-child>
-                <RouterLink to="/docs/Install"
-                    >我该如何开始配置环境？</RouterLink
-                >
+                <NuxtLink to="/docs/Install">我该如何开始配置环境？</NuxtLink>
             </Button>
         </div>
     </div>

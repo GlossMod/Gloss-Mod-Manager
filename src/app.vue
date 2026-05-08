@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Layout from "@/components/Layout.vue";
 import {
     DEFAULT_SEO_DESCRIPTION,
     DEFAULT_SEO_TITLE,
@@ -18,6 +19,6 @@ useSeoMeta({
 
 <template>
     <Layout>
-        <RouterView />
+        <NuxtPage />
     </Layout>
 </template>

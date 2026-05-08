@@ -1,10 +1,12 @@
-import { toValue, watchEffect, type MaybeRefOrGetter } from "vue";
+import { toValue, type MaybeRefOrGetter } from "vue";
 
 export const SITE_NAME = "Gloss Mod Manager";
 export const DEFAULT_SITE_URL = "https://gmm.aoe.top";
 
 export const SITE_URL = (
-    import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL
+    import.meta.env.NUXT_PUBLIC_SITE_URL ||
+    import.meta.env.VITE_SITE_URL ||
+    DEFAULT_SITE_URL
 ).replace(/\/$/, "");
 
 export const DEFAULT_SEO_TITLE = `${SITE_NAME} - 智能游戏 Mod 管理器`;
@@ -58,96 +60,37 @@ const formatTitle = (title = DEFAULT_SEO_TITLE) => {
     return `${title} - ${SITE_NAME}`;
 };
 
-const getHeadElement = <T extends HTMLElement>(
-    selector: string,
-    tagName: keyof HTMLElementTagNameMap,
-    attributes: Record<string, string>,
-) => {
-    const existingElement = document.head.querySelector<T>(selector);
-
-    if (existingElement) {
-        return existingElement;
-    }
-
-    const element = document.createElement(tagName) as T;
-
-    Object.entries(attributes).forEach(([name, value]) => {
-        element.setAttribute(name, value);
-    });
-
-    document.head.appendChild(element);
-    return element;
-};
-
-const setMeta = (
-    attributeName: "name" | "property",
-    key: string,
-    content: string,
-) => {
-    const meta = getHeadElement<HTMLMetaElement>(
-        `meta[${attributeName}="${key}"]`,
-        "meta",
-        { [attributeName]: key },
-    );
-
-    meta.content = content;
-};
-
-const removeMeta = (attributeName: "name" | "property", key: string) => {
-    document.head.querySelector(`meta[${attributeName}="${key}"]`)?.remove();
-};
-
-const setCanonicalLink = (href: string) => {
-    const link = getHeadElement<HTMLLinkElement>(
-        'link[rel="canonical"]',
-        "link",
-        { rel: "canonical" },
-    );
-
-    link.href = href;
-};
-
-const setStructuredData = (
+const resolveStructuredData = (
     structuredData?: StructuredData | StructuredData[],
 ) => {
-    const data = Array.isArray(structuredData)
-        ? structuredData.filter(Boolean)
-        : structuredData;
-    const existingScript = document.head.querySelector<HTMLScriptElement>(
-        `script#${STRUCTURED_DATA_ID}`,
-    );
-
-    if (!data || (Array.isArray(data) && data.length === 0)) {
-        existingScript?.remove();
-        return;
+    if (!structuredData) {
+        return undefined;
     }
 
-    const script =
-        existingScript ??
-        getHeadElement<HTMLScriptElement>(
-            `script#${STRUCTURED_DATA_ID}`,
-            "script",
-            {
-                id: STRUCTURED_DATA_ID,
-                type: "application/ld+json",
-            },
-        );
+    if (Array.isArray(structuredData)) {
+        const data = structuredData.filter(Boolean);
+        return data.length ? data : undefined;
+    }
 
-    script.textContent = JSON.stringify(data);
+    return structuredData;
 };
 
-export const useSeoMeta = (options: MaybeRefOrGetter<SeoMetaOptions>) => {
-    watchEffect(() => {
-        if (typeof document === "undefined") {
-            return;
-        }
+const stringifyStructuredData = (
+    structuredData: StructuredData | StructuredData[],
+) => JSON.stringify(structuredData).replace(/</g, "\\u003c");
 
+export const useSeoMeta = (options: MaybeRefOrGetter<SeoMetaOptions>) => {
+    useHead(() => {
         const metaOptions = toValue(options);
         const title = formatTitle(metaOptions.title);
         const description =
             metaOptions.description?.trim() || DEFAULT_SEO_DESCRIPTION;
-        const canonicalUrl = createCanonicalUrl(
-            metaOptions.path ?? window.location.pathname,
+        const canonicalUrl = createCanonicalUrl(metaOptions.path ?? "/");
+        const imageUrl = metaOptions.image
+            ? createCanonicalUrl(metaOptions.image)
+            : undefined;
+        const structuredData = resolveStructuredData(
+            metaOptions.structuredData,
         );
         const keywords = [
             ...DEFAULT_KEYWORDS,
@@ -162,39 +105,73 @@ export const useSeoMeta = (options: MaybeRefOrGetter<SeoMetaOptions>) => {
             );
         });
 
-        document.title = title;
-        setCanonicalLink(canonicalUrl);
-        setMeta("name", "description", description);
-        setMeta("name", "keywords", keywords.join(", "));
-        setMeta(
-            "name",
-            "robots",
-            metaOptions.noindex ? "noindex, nofollow" : "index, follow",
-        );
-        setMeta("property", "og:site_name", SITE_NAME);
-        setMeta("property", "og:type", metaOptions.type ?? "website");
-        setMeta("property", "og:title", title);
-        setMeta("property", "og:description", description);
-        setMeta("property", "og:url", canonicalUrl);
-        setMeta("property", "og:locale", "zh_CN");
-        setMeta(
-            "name",
-            "twitter:card",
-            metaOptions.image ? "summary_large_image" : "summary",
-        );
-        setMeta("name", "twitter:title", title);
-        setMeta("name", "twitter:description", description);
+        const meta = [
+            { key: "description", name: "description", content: description },
+            { key: "keywords", name: "keywords", content: keywords.join(", ") },
+            {
+                key: "robots",
+                name: "robots",
+                content: metaOptions.noindex
+                    ? "noindex, nofollow"
+                    : "index, follow",
+            },
+            {
+                key: "og:site_name",
+                property: "og:site_name",
+                content: SITE_NAME,
+            },
+            {
+                key: "og:type",
+                property: "og:type",
+                content: metaOptions.type ?? "website",
+            },
+            { key: "og:title", property: "og:title", content: title },
+            {
+                key: "og:description",
+                property: "og:description",
+                content: description,
+            },
+            { key: "og:url", property: "og:url", content: canonicalUrl },
+            { key: "og:locale", property: "og:locale", content: "zh_CN" },
+            {
+                key: "twitter:card",
+                name: "twitter:card",
+                content: imageUrl ? "summary_large_image" : "summary",
+            },
+            { key: "twitter:title", name: "twitter:title", content: title },
+            {
+                key: "twitter:description",
+                name: "twitter:description",
+                content: description,
+            },
+        ];
 
-        if (metaOptions.image) {
-            const imageUrl = createCanonicalUrl(metaOptions.image);
-            setMeta("property", "og:image", imageUrl);
-            setMeta("name", "twitter:image", imageUrl);
-        } else {
-            removeMeta("property", "og:image");
-            removeMeta("name", "twitter:image");
+        if (imageUrl) {
+            meta.push(
+                { key: "og:image", property: "og:image", content: imageUrl },
+                {
+                    key: "twitter:image",
+                    name: "twitter:image",
+                    content: imageUrl,
+                },
+            );
         }
 
-        setStructuredData(metaOptions.structuredData);
+        return {
+            title,
+            link: [{ key: "canonical", rel: "canonical", href: canonicalUrl }],
+            meta,
+            script: structuredData
+                ? [
+                      {
+                          id: STRUCTURED_DATA_ID,
+                          key: STRUCTURED_DATA_ID,
+                          type: "application/ld+json",
+                          innerHTML: stringifyStructuredData(structuredData),
+                      },
+                  ]
+                : [],
+        };
     });
 };
 

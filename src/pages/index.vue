@@ -7,7 +7,14 @@ import {
     CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Zap, Bot, ArrowRight, Globe } from "lucide-vue-next";
+import {
+    Download,
+    Zap,
+    Bot,
+    ArrowRight,
+    Globe,
+    Ellipsis,
+} from "lucide-vue-next";
 import {
     RELEASE_PAGE_URL,
     platformLabels,
@@ -101,10 +108,10 @@ useSeoMeta({
                         as-child
                         class="w-full sm:w-auto h-12 px-8 text-base"
                     >
-                        <RouterLink to="/download">
+                        <NuxtLink to="/download">
                             其他版本
-                            <icon-ellipsis class="ml-2 h-5 w-5" />
-                        </RouterLink>
+                            <Ellipsis class="ml-2 h-5 w-5" />
+                        </NuxtLink>
                     </Button>
                     <Button
                         size="lg"
@@ -112,10 +119,10 @@ useSeoMeta({
                         as-child
                         class="w-full sm:w-auto h-12 px-8 text-base"
                     >
-                        <RouterLink to="/docs">
+                        <NuxtLink to="/docs">
                             阅读文档
                             <ArrowRight class="ml-2 h-5 w-5" />
-                        </RouterLink>
+                        </NuxtLink>
                     </Button>
                 </div>
             </div>
@@ -242,7 +249,7 @@ useSeoMeta({
                 >
             </div>
             <Button variant="secondary" as-child>
-                <RouterLink to="/games">查看完整支持列表</RouterLink>
+                <NuxtLink to="/games">查看完整支持列表</NuxtLink>
             </Button>
         </section>
     </div>

@@ -29,7 +29,7 @@ const toggleMenu = () => {
         >
             <!-- Desktop Nav -->
             <div class="mr-4 hidden md:flex">
-                <RouterLink to="/" class="mr-6 flex items-center space-x-2">
+                <NuxtLink to="/" class="mr-6 flex items-center space-x-2">
                     <img
                         src="/favicon.ico"
                         alt="Gloss Mod Manager"
@@ -38,9 +38,9 @@ const toggleMenu = () => {
                     <span class="hidden font-bold sm:inline-block"
                         >Gloss Mod Manager</span
                     >
-                </RouterLink>
+                </NuxtLink>
                 <nav class="flex items-center gap-6 text-sm font-medium">
-                    <RouterLink
+                    <NuxtLink
                         v-for="link in navLinks"
                         :key="link.path"
                         :to="link.path"
@@ -53,7 +53,7 @@ const toggleMenu = () => {
                         ]"
                     >
                         {{ link.name }}
-                    </RouterLink>
+                    </NuxtLink>
                 </nav>
             </div>
 
@@ -69,14 +69,14 @@ const toggleMenu = () => {
 
             <!-- Mobile Title (Centered) -->
             <div class="flex-1 md:hidden flex justify-center items-center">
-                <RouterLink to="/" class="flex items-center space-x-2">
+                <NuxtLink to="/" class="flex items-center space-x-2">
                     <img
                         src="/favicon.ico"
                         alt="Gloss Mod Manager"
                         class="h-6 w-6"
                     />
                     <span class="font-bold sm:inline-block">GMM</span>
-                </RouterLink>
+                </NuxtLink>
             </div>
 
             <!-- Right controls -->
@@ -112,7 +112,7 @@ const toggleMenu = () => {
             class="md:hidden border-b bg-background border-border/40"
         >
             <nav class="flex flex-col p-4 space-y-4 text-sm font-medium">
-                <RouterLink
+                <NuxtLink
                     v-for="link in navLinks"
                     :key="link.path"
                     :to="link.path"
@@ -120,7 +120,7 @@ const toggleMenu = () => {
                     @click="isMenuOpen = false"
                 >
                     {{ link.name }}
-                </RouterLink>
+                </NuxtLink>
             </nav>
         </div>
     </header>

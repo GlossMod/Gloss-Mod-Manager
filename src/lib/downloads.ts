@@ -1,7 +1,6 @@
 import { computed, onMounted, ref } from "vue";
 
-export const RELEASE_API_URL =
-    "https://api.github.com/repos/GlossMod/Gloss-Mod-Manager/releases/latest";
+export const RELEASE_API_URL = "/api/releases/latest";
 export const RELEASE_PAGE_URL =
     "https://github.com/GlossMod/Gloss-Mod-Manager/releases";
 
@@ -330,11 +329,7 @@ export function useLatestReleaseDownloads() {
         releaseError.value = "";
 
         try {
-            const res = await fetch(RELEASE_API_URL, {
-                headers: {
-                    Authorization: `token ${import.meta.env.VITE_GITHUB_KEY}`,
-                },
-            });
+            const res = await fetch(RELEASE_API_URL);
 
             if (!res.ok) {
                 throw new Error("获取 GitHub Releases 失败");

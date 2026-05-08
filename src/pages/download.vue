@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Downloads from "@/components/Downloads.vue";
+import { ArrowRight } from "lucide-vue-next";
 import { useLatestReleaseDownloads } from "@/lib/downloads";
 import {
     createBreadcrumbJsonLd,
@@ -48,7 +49,7 @@ useSeoMeta({
             <div class="mb-4 mt-4">
                 <Button variant="link" as-child>
                     <a href="https://pan.aoe.top/Tools/GMM" target="_blank">
-                        下载旧版本 <icon-arrow-right class="ml-2 h-5 w-5" />
+                        下载旧版本 <ArrowRight class="ml-2 h-5 w-5" />
                     </a>
                 </Button>
             </div>

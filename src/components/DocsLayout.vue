@@ -70,7 +70,7 @@ const toggleGroup = (title: string) => {
                         class="mt-1 space-y-1 pb-2"
                     >
                         <li v-for="link in section.links" :key="link.routePath">
-                            <RouterLink
+                            <NuxtLink
                                 :to="link.routePath"
                                 class="block rounded-md px-3 py-1.5 text-sm leading-6 transition-colors hover:bg-muted/70 hover:text-foreground"
                                 exact-active-class="text-primary font-medium bg-primary/10"
@@ -81,7 +81,7 @@ const toggleGroup = (title: string) => {
                                 "
                             >
                                 {{ link.title }}
-                            </RouterLink>
+                            </NuxtLink>
                         </li>
                     </ul>
                 </div>
