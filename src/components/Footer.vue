@@ -45,7 +45,7 @@ const footerLinks = [
                         class="flex items-center font-bold text-lg mb-4 space-x-2"
                     >
                         <img
-                            src="/favicon.svg"
+                            src="/favicon.ico"
                             alt="Gloss Mod Manager"
                             class="h-6 w-6"
                         />

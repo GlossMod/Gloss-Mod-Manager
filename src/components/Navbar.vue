@@ -12,7 +12,7 @@ const navLinks = [
     { name: "下载", path: "/download" },
     { name: "文档", path: "/docs" },
     { name: "支持的游戏", path: "/games" },
-    { name: "MCP 服务器", path: "/docs/MCP" },
+    { name: "新增游戏", path: "/add-new-game" },
 ];
 
 const toggleMenu = () => {
@@ -31,7 +31,7 @@ const toggleMenu = () => {
             <div class="mr-4 hidden md:flex">
                 <RouterLink to="/" class="mr-6 flex items-center space-x-2">
                     <img
-                        src="/favicon.svg"
+                        src="/favicon.ico"
                         alt="Gloss Mod Manager"
                         class="h-6 w-6"
                     />
@@ -71,7 +71,7 @@ const toggleMenu = () => {
             <div class="flex-1 md:hidden flex justify-center items-center">
                 <RouterLink to="/" class="flex items-center space-x-2">
                     <img
-                        src="/favicon.svg"
+                        src="/favicon.ico"
                         alt="Gloss Mod Manager"
                         class="h-6 w-6"
                     />

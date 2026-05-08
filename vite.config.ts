@@ -8,7 +8,7 @@ import VueRouter from "vue-router/vite";
 import Components from "unplugin-vue-components/vite";
 
 const defaultSiteUrl = "https://gmm.aoe.top";
-const staticRoutes = ["/", "/download", "/games", "/docs"];
+const staticRoutes = ["/", "/download", "/games", "/add-new-game", "/docs"];
 
 const normalizeSiteUrl = (value: string) => value.replace(/\/+$/, "");
 
@@ -75,7 +75,7 @@ const getRoutePriority = (route: string) => {
         return "1.0";
     }
 
-    if (["/download", "/games", "/docs"].includes(route)) {
+    if (["/download", "/games", "/add-new-game", "/docs"].includes(route)) {
         return "0.9";
     }
 
