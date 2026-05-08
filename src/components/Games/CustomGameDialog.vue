@@ -394,7 +394,7 @@ watch(dialogOpen, (opened) => {
                     >新增游戏
                     <Button size="sm" as-child>
                         <a
-                            href="https://github.com/GlossMod/Gloss-Mod-Manager/discussions/36"
+                            href="https://gmm.aoe.top/add-new-game"
                             target="_blank"
                             >申请新游戏</a
                         >
