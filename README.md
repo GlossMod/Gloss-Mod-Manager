@@ -11,7 +11,7 @@
 
 - Latest Version:  [GitHub](https://github.com/GlossMod/Gloss-Mod-Manager) | [3DM Mods](https://mod.3dmgame.com/mod/197445) | [Microsoft Apps](https://apps.microsoft.com/detail/9P5VGZ39PK6T) | [Cloud](https://cloud.aoe.top/s/rmuL)
 - Docs: https://gmm.aoe.top
-- Add New Games: [New Game Request](https://github.com/GlossMod/Gloss-Mod-Manager/discussions/36)
+- Add New Games: [New Game Request](https://gmm.aoe.top/add-new-game)
 - Feedback: [GitHub Issues](https://github.com/GlossMod/Gloss-Mod-Manager/issues)
 
 ### What is it?

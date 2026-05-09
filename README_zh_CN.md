@@ -10,7 +10,7 @@
 ### 相关链接:
 
 - 最新版本: [3DM Mod站](https://mod.3dmgame.com/mod/197445) | [GitHub](https://github.com/GlossMod/Gloss-Mod-Manager) | [Microsoft Apps](https://apps.microsoft.com/detail/9P5VGZ39PK6T) | [网盘](https://pan.aoe.top/Tools/GMM) 
-- [食用教程](https://gmm.aoe.top/) | [Mod前置](https://pan.aoe.top/GMM/Requirements) | [新游戏请求](https://github.com/GlossMod/Gloss-Mod-Manager/discussions/36) | [问卷调查](https://wj.qq.com/s2/14010887/92e3/) | [赞助小莫](https://sponsor.aoe.top/)
+- [食用教程](https://gmm.aoe.top/) | [Mod前置](https://pan.aoe.top/GMM/Requirements) | [新游戏请求](https://gmm.aoe.top/add-new-game) | [问卷调查](https://wj.qq.com/s2/14010887/92e3/) | [赞助小莫](https://sponsor.aoe.top/)
 - 问题反馈: [QQ频道](https://pd.qq.com/s/hco46ol54) | [QQ群 2169033132](https://qm.qq.com/q/ft6b4xx2PS) | [GitHub Issues](https://github.com/GlossMod/Gloss-Mod-Manager/issues)
 
 
