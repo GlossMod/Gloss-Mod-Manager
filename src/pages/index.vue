@@ -15,11 +15,7 @@ import {
     Globe,
     Ellipsis,
 } from "lucide-vue-next";
-import {
-    RELEASE_PAGE_URL,
-    platformLabels,
-    useLatestReleaseDownloads,
-} from "@/lib/downloads";
+
 import {
     DEFAULT_SEO_DESCRIPTION,
     DEFAULT_SEO_TITLE,
@@ -27,25 +23,6 @@ import {
     createWebSiteJsonLd,
     useSeoMeta,
 } from "@/lib/seo";
-
-const { detectedPlatform, isReleaseLoading, preferredDownload } =
-    useLatestReleaseDownloads();
-
-const downloadHref = computed(
-    () => preferredDownload.value?.downloadUrl ?? RELEASE_PAGE_URL,
-);
-
-const downloadButtonText = computed(() => {
-    if (isReleaseLoading.value && !preferredDownload.value) {
-        return "获取下载地址...";
-    }
-
-    if (!preferredDownload.value) {
-        return "查看全部下载";
-    }
-
-    return `下载 ${platformLabels[detectedPlatform.value]} 版`;
-});
 
 useSeoMeta({
     title: DEFAULT_SEO_TITLE,
@@ -93,24 +70,12 @@ useSeoMeta({
                 >
                     <Button
                         size="lg"
-                        as="a"
-                        :href="downloadHref"
-                        target="_blank"
-                        rel="noreferrer"
-                        class="w-full sm:w-auto h-12 px-8 text-base"
-                    >
-                        <Download class="mr-2 h-5 w-5" />
-                        {{ downloadButtonText }}
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="lg"
                         as-child
                         class="w-full sm:w-auto h-12 px-8 text-base"
                     >
                         <NuxtLink to="/download">
-                            其他版本
-                            <Ellipsis class="ml-2 h-5 w-5" />
+                            立即下载
+                            <Download class="ml-2 h-5 w-5" />
                         </NuxtLink>
                     </Button>
                     <Button

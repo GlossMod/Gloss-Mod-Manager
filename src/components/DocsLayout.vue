@@ -1,14 +1,32 @@
 <script setup lang="ts">
-import { ChevronDown, ListTree } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { ChevronDown, ListTree, Menu } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { docsNavGroups, resolveDocByPath } from "@/lib/docs";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 
 const route = useRoute();
 const openGroups = ref(new Set(docsNavGroups.map((section) => section.title)));
 
 const currentDoc = computed(() => resolveDocByPath(route.path));
 const pageHeadings = computed(() => currentDoc.value?.headings ?? []);
+
+const isMobileMenuOpen = ref(false);
+
+// 路由变化时自动关闭移动端菜单
+watch(
+    () => route.path,
+    () => {
+        isMobileMenuOpen.value = false;
+    },
+);
 
 const isActiveDocPath = (path: string) => {
     const routePath = route.path.toLowerCase();
@@ -39,11 +57,82 @@ const toggleGroup = (title: string) => {
 
 <template>
     <div
-        class="container max-w-screen-2xl mx-auto px-4 md:px-8 py-8 grid grid-cols-1 gap-8 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_14rem] flex-1"
+        class="container max-w-screen-2xl mx-auto px-4 md:px-8 py-8 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_14rem] lg:gap-8 flex-1"
     >
+        <!-- Mobile Navigation -->
+        <div class="lg:hidden mb-6">
+            <Sheet v-model:open="isMobileMenuOpen">
+                <SheetTrigger as-child>
+                    <Button variant="outline" class="w-full justify-between">
+                        <span class="flex items-center gap-2">
+                            <Menu class="h-4 w-4" />
+                            文档导航
+                        </span>
+                        <ChevronDown class="h-4 w-4 opacity-50" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="left" class="w-80 pl-0">
+                    <div class="h-full overflow-y-auto px-4 pb-8">
+                        <SheetHeader class="mb-4">
+                            <SheetTitle class="text-left">文档导航</SheetTitle>
+                        </SheetHeader>
+                        <div class="space-y-1">
+                            <div
+                                v-for="section in docsNavGroups"
+                                :key="section.title"
+                            >
+                                <button
+                                    type="button"
+                                    class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/80"
+                                    :class="
+                                        isSectionActive(section.links)
+                                            ? 'text-foreground'
+                                            : 'text-muted-foreground'
+                                    "
+                                    @click="toggleGroup(section.title)"
+                                >
+                                    <span>{{ section.title }}</span>
+                                    <ChevronDown
+                                        class="h-4 w-4 transition-transform"
+                                        :class="
+                                            isGroupOpen(section.title)
+                                                ? ''
+                                                : '-rotate-90'
+                                        "
+                                    />
+                                </button>
+                                <ul
+                                    v-show="isGroupOpen(section.title)"
+                                    class="mt-1 space-y-1 pb-2"
+                                >
+                                    <li
+                                        v-for="link in section.links"
+                                        :key="link.routePath"
+                                    >
+                                        <NuxtLink
+                                            :to="link.routePath"
+                                            class="block rounded-md px-3 py-1.5 text-sm leading-6 transition-colors hover:bg-muted/70 hover:text-foreground"
+                                            exact-active-class="text-primary font-medium bg-primary/10"
+                                            :class="
+                                                isActiveDocPath(link.routePath)
+                                                    ? 'text-primary font-medium bg-primary/10'
+                                                    : 'text-muted-foreground'
+                                            "
+                                        >
+                                            {{ link.title }}
+                                        </NuxtLink>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        </div>
+
         <!-- Sidebar Navigation -->
         <aside
-            class="w-full lg:sticky lg:top-20 self-start lg:h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border/70 bg-background/70 p-3 shadow-sm"
+            class="hidden lg:block w-full lg:sticky lg:top-20 self-start lg:h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border/70 bg-background/70 p-3 shadow-sm"
         >
             <div class="space-y-1">
                 <div v-for="section in docsNavGroups" :key="section.title">
