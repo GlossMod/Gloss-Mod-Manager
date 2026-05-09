@@ -217,180 +217,49 @@ const toggleGroup = (title: string) => {
 
 <style>
 .prose-container {
-    color: var(--foreground);
+    min-width: 0;
 }
 
-.prose-container h1 {
-    margin-top: 0.5rem;
-    margin-bottom: 1.5rem;
-    font-size: 1.875rem;
-    font-weight: 800;
-    line-height: 1.2;
-}
-
-.prose-container h2 {
-    margin-top: 2.5rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    scroll-margin-top: 6rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 1.5rem;
-    font-weight: 700;
-    line-height: 1.25;
-}
-
-.prose-container h3 {
-    margin-top: 2rem;
-    margin-bottom: 1rem;
-    scroll-margin-top: 6rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-    line-height: 1.4;
-}
-
-.prose-container h4 {
-    margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
-    scroll-margin-top: 6rem;
-    font-size: 1.125rem;
-    font-weight: 600;
-    line-height: 1.4;
-}
-
-.prose-container p {
-    margin-bottom: 1.5rem;
-    color: color-mix(in oklab, var(--foreground) 90%, transparent);
-    line-height: 1.75rem;
-}
-
-.prose-container ul,
-.prose-container ol {
-    margin-bottom: 1.5rem;
-    padding-left: 1.5rem;
-}
-
-.prose-container ul {
-    list-style: disc;
-}
-
-.prose-container ol {
-    list-style: decimal;
-}
-
-.prose-container li {
-    color: color-mix(in oklab, var(--foreground) 90%, transparent);
-    line-height: 1.75rem;
-}
-
-.prose-container li + li {
-    margin-top: 0.5rem;
-}
-
-.prose-container a {
-    color: var(--primary);
-    font-weight: 500;
-    text-decoration-line: underline;
-    text-decoration-color: color-mix(in oklab, var(--primary) 30%, transparent);
-    text-underline-offset: 4px;
-}
-
-.prose-container a:hover {
-    text-decoration-color: var(--primary);
-}
-
-.prose-container blockquote {
-    margin-top: 1.5rem;
-    border-left: 4px solid color-mix(in oklab, var(--primary) 50%, transparent);
-    border-radius: 0 0.5rem 0.5rem 0;
-    background: color-mix(in oklab, var(--muted) 30%, transparent);
-    color: var(--muted-foreground);
-    padding: 0.25rem 0 0.25rem 1rem;
-    font-style: italic;
-}
-
-.prose-container code {
-    border-radius: 0.25rem;
-    background: var(--muted);
-    padding: 0.2rem 0.3rem;
-    font-family:
-        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-        "Liberation Mono", "Courier New", monospace;
-    font-size: 0.875rem;
-    font-weight: 600;
-}
-
-.prose-container pre {
-    display: flex;
-    margin-bottom: 1.5rem;
-    overflow-x: auto;
-    border-radius: 0.5rem;
-    background: var(--muted);
-    padding: 1rem;
-    font-size: 0.875rem;
-}
-
-.prose-container pre code {
-    background: transparent;
-    color: var(--foreground);
-    padding: 0;
-    font-weight: 400;
-}
-
-.prose-container img,
-.prose-container iframe {
-    margin-bottom: 1.5rem;
-    max-width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-}
-
-.prose-container img {
-    height: auto;
-}
-
-.prose-container kbd {
-    border: 1px solid var(--border);
-    border-radius: 0.25rem;
-    background: var(--muted);
-    padding: 0.125rem 0.375rem;
-    font-family:
-        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-        "Liberation Mono", "Courier New", monospace;
-    font-size: 0.75rem;
-}
-
-.prose-container hr {
-    margin: 2rem 0;
-    border-color: var(--border);
-}
-
-.prose-container table {
+.prose-container .docs-markdown-body {
+    box-sizing: border-box;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: 0 16px 40px rgb(15 23 42 / 0.05);
+    background-color: transparent;
+}
+
+.prose-container .docs-markdown-body > :first-child {
+    margin-top: 0;
+}
+
+.prose-container .docs-markdown-body > :last-child {
+    margin-bottom: 0;
+}
+
+.prose-container .docs-markdown-body h1,
+.prose-container .docs-markdown-body h2,
+.prose-container .docs-markdown-body h3,
+.prose-container .docs-markdown-body h4 {
+    scroll-margin-top: 6rem;
+}
+
+.prose-container .docs-markdown-body iframe {
+    display: block;
+    width: 100%;
+    max-width: 100%;
     margin-bottom: 1.5rem;
-    border-collapse: collapse;
-    text-align: left;
-}
-
-.prose-container th,
-.prose-container td {
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 1rem;
-}
-
-.prose-container th {
-    background: color-mix(in oklab, var(--muted) 30%, transparent);
-    color: var(--foreground);
-    font-weight: 600;
+    border: 1px solid var(--borderColor-muted);
+    border-radius: 0.75rem;
+    aspect-ratio: 16 / 9;
 }
 
 @media (min-width: 768px) {
-    .prose-container h1 {
-        font-size: 2.25rem;
-    }
-
-    .prose-container h2 {
-        font-size: 1.875rem;
+    .prose-container .docs-markdown-body {
+        padding: 2rem 2.25rem;
     }
 }
 </style>

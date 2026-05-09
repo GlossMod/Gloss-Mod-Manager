@@ -26,16 +26,30 @@ interface MarkdownRenderEnv {
 }
 
 markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
-    const hrefIndex = tokens[index].attrIndex("href");
+    const currentToken = tokens[index];
+
+    if (!currentToken) {
+        if (defaultLinkOpen) {
+            return defaultLinkOpen(tokens, index, options, env, self);
+        }
+
+        return self.renderToken(tokens, index, options);
+    }
+
+    const hrefIndex = currentToken.attrIndex("href");
 
     if (hrefIndex >= 0) {
-        const href = tokens[index].attrs?.[hrefIndex]?.[1] ?? "";
+        const href = currentToken.attrs?.[hrefIndex]?.[1] ?? "";
         const rewrittenHref = rewriteDocHref(href, props.doc);
-        tokens[index].attrs![hrefIndex][1] = rewrittenHref;
+        const hrefAttribute = currentToken.attrs?.[hrefIndex];
+
+        if (hrefAttribute) {
+            hrefAttribute[1] = rewrittenHref;
+        }
 
         if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(rewrittenHref)) {
-            tokens[index].attrSet("target", "_blank");
-            tokens[index].attrSet("rel", "noopener noreferrer");
+            currentToken.attrSet("target", "_blank");
+            currentToken.attrSet("rel", "noopener noreferrer");
         }
     }
 
@@ -47,13 +61,23 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
 };
 
 markdown.renderer.rules.heading_open = (tokens, index, options, env, self) => {
-    const tag = tokens[index].tag;
+    const currentToken = tokens[index];
+
+    if (!currentToken) {
+        if (defaultHeadingOpen) {
+            return defaultHeadingOpen(tokens, index, options, env, self);
+        }
+
+        return self.renderToken(tokens, index, options);
+    }
+
+    const tag = currentToken.tag;
 
     if (["h2", "h3", "h4"].includes(tag)) {
         const renderEnv = env as MarkdownRenderEnv;
         renderEnv.headingSlugCounts ??= new Map<string, number>();
         const title = tokens[index + 1]?.content ?? "";
-        tokens[index].attrSet(
+        currentToken.attrSet(
             "id",
             createUniqueHeadingSlug(title, renderEnv.headingSlugCounts),
         );
@@ -73,5 +97,5 @@ const renderedHtml = computed(() => {
 </script>
 
 <template>
-    <article v-html="renderedHtml" />
+    <article class="markdown-body docs-markdown-body" v-html="renderedHtml" />
 </template>

@@ -38,7 +38,10 @@ const footerLinks = [
 <template>
     <footer class="border-t border-border/40 bg-muted/20">
         <div class="container max-w-screen-2xl px-4 md:px-8 mx-auto py-12">
-            <FriendlyLinks class="mb-8" />
+            <div class="mb-12 pt-8 border-t border-border/40">
+                <FriendlyLinks />
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div class="col-span-1 md:col-span-1">
                     <div

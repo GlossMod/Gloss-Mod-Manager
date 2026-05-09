@@ -126,7 +126,7 @@ function getDownloadDetail(card: PlatformCard, item?: DownloadItem) {
 
                 <div
                     v-if="detectedPlatform === card.key"
-                    class="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/10 to-transparent opacity-50 transition-opacity"
+                    class="pointer-events-none absolute inset-0 bg-linear-to-b from-primary/10 to-transparent opacity-50 transition-opacity"
                 ></div>
                 <div
                     class="pointer-events-none absolute -top-24 -left-24 w-48 h-48 bg-primary/20 rounded-full blur-[80px] group-hover:bg-primary/30 transition-colors"

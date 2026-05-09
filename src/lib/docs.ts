@@ -107,7 +107,7 @@ const stripFrontmatter = (content: string) => {
 
     return {
         body: content.slice(match[0].length),
-        frontmatter: match[1],
+        frontmatter: match[1] ?? "",
     };
 };
 
@@ -126,7 +126,8 @@ const extractTitle = (content: string, filePath: string) => {
     }
 
     const pathParts = filePath.split("/");
-    return pathParts[pathParts.length - 1].replace(/\.md$/i, "");
+    const fileName = pathParts.at(-1) ?? filePath;
+    return fileName.replace(/\.md$/i, "");
 };
 
 const extractHeadings = (content: string) => {
@@ -138,11 +139,12 @@ const extractHeadings = (content: string) => {
         .map((line) => line.match(/^(#{2,4})\s+(.+)$/))
         .filter((match): match is RegExpMatchArray => Boolean(match))
         .map((match) => {
-            const title = removeInlineMarkdown(match[2]);
+            const [, hashes = "", rawTitle = ""] = match;
+            const title = removeInlineMarkdown(rawTitle);
 
             return {
                 id: createUniqueHeadingSlug(title, slugCounts),
-                level: match[1].length,
+                level: hashes.length,
                 title,
             } satisfies DocHeading;
         });
@@ -167,7 +169,7 @@ const getGroupId = (docPath: string) => {
         return "root";
     }
 
-    return pathParts[0];
+    return pathParts[0] ?? "root";
 };
 
 const getSortIndex = (docPath: string) => {
