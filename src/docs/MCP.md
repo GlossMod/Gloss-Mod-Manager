@@ -50,8 +50,8 @@ MCP (Model Context Protocol) 服务器允许第三方应用通过 HTTP 接口与
         "glossmod-mcp": {
             "type": "http",
             "url": "https://mod.3dmgame.com/mcp",
-            "env": {
-                "GLOSSMOD_API_KEY": "${input:GLOSSMOD_API_KEY}"
+            "headers": {
+                "authorization": "${input:GLOSSMOD_API_KEY}"
             }
         }
     },
