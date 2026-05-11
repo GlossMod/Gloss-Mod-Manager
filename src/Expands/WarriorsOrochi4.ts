@@ -1,6 +1,7 @@
-import { join, extname } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
+import { FileHandler } from "@/lib/FileHandler";
 
 /**
  * @description 无双大蛇4 支持
@@ -73,7 +74,7 @@ export const supportedGames = async () =>
             let bin = false;
 
             for (const item of mod.modFiles) {
-                if ((await extname(item)) == "bin") bin = true;
+                if ((await FileHandler.getFileExtension(item)) == "bin") bin = true;
             }
 
             if (bin) return 1;

@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
 
@@ -21,7 +21,7 @@ async function handleVpk(
     const result: IState[] = [];
 
     for (const file of mod.modFiles) {
-        if ((await extname(file)).toLowerCase() !== ".vpk") {
+        if ((await FileHandler.getFileExtension(file)).toLowerCase() !== "vpk") {
             continue;
         }
 

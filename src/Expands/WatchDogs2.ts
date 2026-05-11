@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -45,7 +45,9 @@ async function getNextPatchName(increment: boolean) {
     const dataFolder = await join(gameStorage, "data_win64");
     const datFiles: string[] = [];
     for (const item of await FileHandler.getFolderFiles(dataFolder)) {
-        if ((await extname(item)).toLowerCase() === ".dat") {
+        if (
+            (await FileHandler.getFileExtension(item)).toLowerCase() === "dat"
+        ) {
             datFiles.push(item);
         }
     }
@@ -72,15 +74,17 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
     const patchMap = new Map<string, string>();
     const files: Array<{ item: string; extension: string; stem: string }> = [];
     for (const item of mod.modFiles) {
-        const extension = (await extname(item)).toLowerCase();
-        if (extension !== ".dat" && extension !== ".fat") {
+        const extension = await FileHandler.getFileExtension(item);
+        if (extension !== "dat" && extension !== "fat") {
             continue;
         }
+
+        const fileName = await basename(item);
 
         files.push({
             item,
             extension,
-            stem: await basename(item, await extname(item)),
+            stem: fileName.slice(0, -(extension.length + 1)),
         });
     }
     files.sort((left, right) => {
@@ -88,7 +92,7 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
             if (left.extension === right.extension) {
                 return 0;
             }
-            return left.extension === ".dat" ? -1 : 1;
+            return left.extension === "dat" ? -1 : 1;
         }
         return left.stem.localeCompare(right.stem);
     });
@@ -104,9 +108,9 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
             const stem = file.stem;
             const patchName =
                 patchMap.get(stem) ||
-                (await getNextPatchName(extension === ".dat"));
+                (await getNextPatchName(extension === "dat"));
             patchMap.set(stem, patchName);
-            const gameFileName = `${patchName}${extension}`;
+            const gameFileName = `${patchName}.${extension}`;
             await FileHandler.copyFile(
                 source,
                 await join(gameStorage, "data_win64", gameFileName),
@@ -125,7 +129,7 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
                 continue;
             }
 
-            if ((await extname(record[1])).toLowerCase() === extension) {
+            if ((await FileHandler.getFileExtension(record[1])) === extension) {
                 matched = record;
                 break;
             }
@@ -199,7 +203,10 @@ export const supportedGames = async () =>
         ],
         async checkModType(mod) {
             for (const item of mod.modFiles) {
-                if ((await extname(item)).toLowerCase() === ".dat") {
+                if (
+                    (await FileHandler.getFileExtension(item)).toLowerCase() ===
+                    "dat"
+                ) {
                     return 1;
                 }
             }

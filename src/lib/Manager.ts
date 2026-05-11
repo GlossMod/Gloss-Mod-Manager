@@ -4,7 +4,7 @@
 
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
-import { basename, dirname, extname, join } from "@tauri-apps/api/path";
+import { basename, dirname, join } from "@tauri-apps/api/path";
 
 interface IManagerContext {
     modStorage: string;
@@ -22,6 +22,20 @@ export class Manager {
     ];
 
     private static context: Partial<IManagerContext> = {};
+
+    private static normalizeExtensionName(extension: string) {
+        return extension.replace(/^\./u, "").toLowerCase();
+    }
+
+    private static async matchFileExtension(
+        filePath: string,
+        extension: string,
+    ) {
+        return (
+            (await FileHandler.getFileExtension(filePath)) ===
+            Manager.normalizeExtensionName(extension)
+        );
+    }
 
     private static async getStoreContext(): Promise<Partial<IManagerContext>> {
         const manager = useManager();
@@ -400,7 +414,7 @@ export class Manager {
 
         for (const item of mod.modFiles) {
             const matched = isExtname
-                ? (await extname(item)) === fileName
+                ? await Manager.matchFileExtension(item, fileName)
                 : await FileHandler.compareFileName(item, fileName);
 
             if (matched) {
@@ -480,7 +494,7 @@ export class Manager {
 
         for (const item of mod.modFiles) {
             const matched = isExtname
-                ? (await extname(item)) === fileName
+                ? await Manager.matchFileExtension(item, fileName)
                 : await FileHandler.compareFileName(item, fileName);
 
             if (!matched) {

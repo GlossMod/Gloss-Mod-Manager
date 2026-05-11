@@ -1,4 +1,4 @@
-import { join, extname } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
 import { FileHandler } from "@/lib/FileHandler";
@@ -78,7 +78,7 @@ export const supportedGames = async () =>
             let psarc = false;
 
             for (const item of mod.modFiles) {
-                if ((await extname(item)) == "psarc") psarc = true;
+                if ((await FileHandler.getFileExtension(item)) == "psarc") psarc = true;
             }
 
             if (psarc) return 1;

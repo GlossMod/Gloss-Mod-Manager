@@ -1,7 +1,8 @@
-import { extname, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
 import { ScanGame } from "@/lib/scan-game";
+import { FileHandler } from "@/lib/FileHandler";
 
 /**
  * @description 怪物猎人世界支持
@@ -130,7 +131,7 @@ export const supportedGames = async () =>
             let plugins = false;
             for (const item of mod.modFiles) {
                 if (item.toLowerCase().includes("nativepc")) nativePC = true;
-                if ((await extname(item)).toLowerCase() === ".dll")
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "dll")
                     plugins = true;
             }
 

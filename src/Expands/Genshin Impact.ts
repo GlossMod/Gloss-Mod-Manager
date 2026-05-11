@@ -1,6 +1,7 @@
-import { join, basename, extname } from "@tauri-apps/api/path";
+import { join, basename } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
+import { FileHandler } from "@/lib/FileHandler";
 
 /**
  * @description 黑神话 悟空 支持
@@ -119,7 +120,7 @@ export const supportedGames = async () =>
             let mods = false;
             let GIMI = false;
             for (const item of mod.modFiles) {
-                if ((await extname(item)) == "ini") mods = true;
+                if ((await FileHandler.getFileExtension(item)) == "ini") mods = true;
                 if ((await basename(item)) == "3DMigoto Loader.exe")
                     GIMI = true;
             }

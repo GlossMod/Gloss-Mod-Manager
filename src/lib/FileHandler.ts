@@ -1048,6 +1048,21 @@ export class FileHandler {
     }
 
     /**
+     * 获取文件扩展名（不带点）。
+     * Tauri 的 extname 在没有扩展名时会抛错，这里统一兜底为空字符串。
+     */
+    public static async getFileExtension(filePath: string) {
+        const fileName = await basename(filePath);
+        const lastDotIndex = fileName.lastIndexOf(".");
+
+        if (lastDotIndex <= 0 || lastDotIndex >= fileName.length - 1) {
+            return "";
+        }
+
+        return fileName.slice(lastDotIndex + 1).toLowerCase();
+    }
+
+    /**
      * 比较两个文件名是否相同
      * @param name1
      * @param name2

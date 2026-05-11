@@ -1,6 +1,7 @@
-import { join, basename, extname } from "@tauri-apps/api/path";
+import { join, basename } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
+import { FileHandler } from "@/lib/FileHandler";
 
 /**
  * @description 美国末日2 支持
@@ -95,7 +96,7 @@ export const supportedGames = async () =>
 
             for (const item of mod.modFiles) {
                 if ((await basename(item)) == "winmm.dll") modloader = true;
-                if ((await extname(item)) == "psarc") mods = true;
+                if ((await FileHandler.getFileExtension(item)) == "psarc") mods = true;
             }
 
             if (modloader) return 1;

@@ -1,4 +1,4 @@
-import { basename, documentDir, extname, join } from "@tauri-apps/api/path";
+import { basename, documentDir, join } from "@tauri-apps/api/path";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
 import { UnityGame, UnityGameILCPP2 } from "@/lib/UnityGame";
@@ -64,7 +64,7 @@ async function evaluateRuleMatch(
                 break;
             }
             default: {
-                const fileExtname = normalizeExtname(await extname(filePath));
+                const fileExtname = normalizeExtname(await FileHandler.getFileExtension(filePath));
                 if (
                     normalizedKeywords.some((keyword) => {
                         return normalizeExtname(keyword) === fileExtname;

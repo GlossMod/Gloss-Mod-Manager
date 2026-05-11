@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { DotNetTool } from "../lib/dotnet-tool";
 import { FileHandler } from "../lib/FileHandler";
@@ -249,7 +249,9 @@ async function handlePak(
     let hasChanges = false;
 
     for (const item of mod.modFiles) {
-        if ((await extname(item)).toLowerCase() !== "pak") {
+        if (
+            (await FileHandler.getFileExtension(item)).toLowerCase() !== "pak"
+        ) {
             continue;
         }
 
@@ -514,11 +516,18 @@ export const supportedGames = async () =>
             for (const item of mod.modFiles) {
                 const lowerItem = item.toLowerCase();
 
-                if ((await extname(item)).toLowerCase() === "pak") pak = true;
+                if (
+                    (await FileHandler.getFileExtension(item)).toLowerCase() ===
+                    "pak"
+                )
+                    pak = true;
                 if (lowerItem.includes("public") || lowerItem.includes("data"))
                     data = true;
                 if (lowerItem.includes("bin")) bin = true;
-                if ((await extname(item)).toLowerCase() === "dll")
+                if (
+                    (await FileHandler.getFileExtension(item)).toLowerCase() ===
+                    "dll"
+                )
                     nativeMods = true;
                 if ((await basename(item)).toLowerCase() === "dwrite.dll")
                     bg3se = true;

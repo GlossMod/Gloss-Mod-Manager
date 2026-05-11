@@ -4,7 +4,8 @@
 
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
+import { FileHandler } from "@/lib/FileHandler";
 
 export class UnityGame {
     static modType = async () =>
@@ -97,7 +98,7 @@ export class UnityGame {
                 bepinEx = true;
             }
 
-            if ((await extname(item)) === "dll") {
+            if ((await FileHandler.getFileExtension(item)) === "dll") {
                 plugins = true;
             }
 
@@ -201,7 +202,7 @@ export class UnityGameILCPP2 {
                 melonLoader = true;
             }
 
-            if ((await extname(item)) === "dll") {
+            if ((await FileHandler.getFileExtension(item)) === "dll") {
                 mods = true;
             }
         }

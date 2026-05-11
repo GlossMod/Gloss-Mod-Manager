@@ -21,7 +21,10 @@ import {
     getThirdPartyProviderLabel,
     isThirdPartyProviderSupported,
     NexusModsAuthorizationError,
+    type INexusModsFacetSelection,
     type IThirdPartyModDetail,
+    type IThirdPartyModFacetOption,
+    type IThirdPartyModFacets,
     type IThirdPartyModFile,
     type IThirdPartyModItem,
     type ThirdPartyDescriptionFormat,
@@ -30,6 +33,7 @@ import {
 
 const DEFAULT_PAGE_SIZE = "12";
 const PAGE_SIZE_OPTIONS = ["12", "20", "36", "48"];
+const NEXUS_FACET_ALL_VALUE = "all";
 const EMPTY_POSTER =
     "data:image/svg+xml;charset=UTF-8," +
     encodeURIComponent(`
@@ -90,6 +94,7 @@ const markdownParser = new MarkdownIt({
 });
 
 const mods = ref<IThirdPartyModItem[]>([]);
+const nexusFacets = ref<IThirdPartyModFacets>(createEmptyThirdPartyModFacets());
 const loading = ref(false);
 const errorMessage = ref("");
 const page = ref(1);
@@ -97,6 +102,9 @@ const pageSize = ref(DEFAULT_PAGE_SIZE);
 const totalCount = ref(0);
 const totalPages = ref(0);
 const searchKeyword = ref("");
+const selectedNexusCategory = ref(NEXUS_FACET_ALL_VALUE);
+const selectedNexusLanguage = ref(NEXUS_FACET_ALL_VALUE);
+const selectedNexusTag = ref(NEXUS_FACET_ALL_VALUE);
 const queueingResourceKey = ref("");
 const detailOpen = ref(false);
 const detailLoading = ref(false);
@@ -116,6 +124,7 @@ const currentGameName = computed(() => {
 const providerLabel = computed(() => {
     return getThirdPartyProviderLabel(props.provider);
 });
+const isNexusModsProvider = computed(() => props.provider === "NexusMods");
 const providerSupported = computed(() => {
     return isThirdPartyProviderSupported(currentGame.value, props.provider);
 });
@@ -126,7 +135,18 @@ const renderedDescription = computed(() => {
     );
 });
 const hasActiveFilters = computed(() => {
-    return Boolean(searchKeyword.value.trim());
+    return Boolean(searchKeyword.value.trim() || hasActiveNexusFacets.value);
+});
+const hasActiveNexusFacets = computed(() => {
+    if (!isNexusModsProvider.value) {
+        return false;
+    }
+
+    return [
+        selectedNexusCategory.value,
+        selectedNexusLanguage.value,
+        selectedNexusTag.value,
+    ].some((value) => value !== NEXUS_FACET_ALL_VALUE);
 });
 const currentPageDownloads = computed(() => {
     return mods.value.reduce((total, item) => total + (item.downloads ?? 0), 0);
@@ -268,6 +288,19 @@ watch(pageSize, () => {
     void fetchMods();
 });
 
+watch([selectedNexusCategory, selectedNexusLanguage, selectedNexusTag], () => {
+    if (!isNexusModsProvider.value) {
+        return;
+    }
+
+    if (page.value !== 1) {
+        page.value = 1;
+        return;
+    }
+
+    void fetchMods();
+});
+
 watch(
     shouldPollTaskSnapshots,
     (shouldPoll) => {
@@ -319,6 +352,7 @@ onBeforeUnmount(() => {
 async function fetchMods() {
     if (!currentGame.value) {
         mods.value = [];
+        nexusFacets.value = createEmptyThirdPartyModFacets();
         totalCount.value = 0;
         totalPages.value = 0;
         errorMessage.value = "请先在游戏页选择当前管理的游戏。";
@@ -327,6 +361,7 @@ async function fetchMods() {
 
     if (!providerSupported.value) {
         mods.value = [];
+        nexusFacets.value = createEmptyThirdPartyModFacets();
         totalCount.value = 0;
         totalPages.value = 0;
         errorMessage.value = `当前游戏暂未配置 ${providerLabel.value} 数据源。`;
@@ -345,6 +380,7 @@ async function fetchMods() {
                 page: page.value,
                 pageSize: Number(pageSize.value),
                 searchText: searchKeyword.value.trim(),
+                nexusModsFacets: getNexusModsFacetSelection(),
             },
             settings.nexusModsUser,
         );
@@ -354,6 +390,7 @@ async function fetchMods() {
         }
 
         mods.value = result.items;
+        nexusFacets.value = result.facets ?? createEmptyThirdPartyModFacets();
         totalCount.value = result.totalCount;
         totalPages.value = result.totalPages;
 
@@ -366,6 +403,7 @@ async function fetchMods() {
         }
 
         mods.value = [];
+        nexusFacets.value = createEmptyThirdPartyModFacets();
         totalCount.value = 0;
         totalPages.value = 0;
         errorMessage.value = toErrorMessage(
@@ -799,9 +837,36 @@ function closeDetail() {
     selectedMod.value = null;
 }
 
+function createEmptyThirdPartyModFacets(): IThirdPartyModFacets {
+    return {
+        categoryName: [],
+        languageName: [],
+        tag: [],
+    };
+}
+
+function getNexusFacetValue(value: string) {
+    return value === NEXUS_FACET_ALL_VALUE ? "" : value;
+}
+
+function getNexusModsFacetSelection(): INexusModsFacetSelection | undefined {
+    if (!isNexusModsProvider.value) {
+        return undefined;
+    }
+
+    return {
+        categoryName: getNexusFacetValue(selectedNexusCategory.value),
+        languageName: getNexusFacetValue(selectedNexusLanguage.value),
+        tag: getNexusFacetValue(selectedNexusTag.value),
+    };
+}
+
 function resetFilters() {
     searchKeyword.value = "";
     pageSize.value = DEFAULT_PAGE_SIZE;
+    selectedNexusCategory.value = NEXUS_FACET_ALL_VALUE;
+    selectedNexusLanguage.value = NEXUS_FACET_ALL_VALUE;
+    selectedNexusTag.value = NEXUS_FACET_ALL_VALUE;
 
     if (page.value !== 1) {
         page.value = 1;
@@ -816,6 +881,10 @@ function handleCoverError(event: Event) {
 
 function formatNumber(value?: number) {
     return numberFormatter.format(value ?? 0);
+}
+
+function formatFacetOptionLabel(item: IThirdPartyModFacetOption) {
+    return `${item.label}（${formatNumber(item.count)}）`;
 }
 
 function formatDate(value?: string) {
@@ -1151,6 +1220,83 @@ function escapeHtml(source: string) {
                                     :value="item"
                                 >
                                     每页 {{ item }} 条
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div
+                    v-if="isNexusModsProvider"
+                    class="grid gap-3 md:grid-cols-3"
+                >
+                    <div>
+                        <div class="text-sm font-medium">Nexus 分类</div>
+                        <Select
+                            v-model="selectedNexusCategory"
+                            :disabled="!nexusFacets.categoryName.length"
+                        >
+                            <SelectTrigger class="mt-2 w-full">
+                                <SelectValue placeholder="全部分类" />
+                            </SelectTrigger>
+                            <SelectContent class="max-h-72">
+                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                    全部分类
+                                </SelectItem>
+                                <SelectItem
+                                    v-for="item in nexusFacets.categoryName"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ formatFacetOptionLabel(item) }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <div class="text-sm font-medium">Nexus 语言</div>
+                        <Select
+                            v-model="selectedNexusLanguage"
+                            :disabled="!nexusFacets.languageName.length"
+                        >
+                            <SelectTrigger class="mt-2 w-full">
+                                <SelectValue placeholder="全部语言" />
+                            </SelectTrigger>
+                            <SelectContent class="max-h-72">
+                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                    全部语言
+                                </SelectItem>
+                                <SelectItem
+                                    v-for="item in nexusFacets.languageName"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ formatFacetOptionLabel(item) }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <div class="text-sm font-medium">Nexus 标签</div>
+                        <Select
+                            v-model="selectedNexusTag"
+                            :disabled="!nexusFacets.tag.length"
+                        >
+                            <SelectTrigger class="mt-2 w-full">
+                                <SelectValue placeholder="全部标签" />
+                            </SelectTrigger>
+                            <SelectContent class="max-h-72">
+                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                    全部标签
+                                </SelectItem>
+                                <SelectItem
+                                    v-for="item in nexusFacets.tag"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ formatFacetOptionLabel(item) }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>

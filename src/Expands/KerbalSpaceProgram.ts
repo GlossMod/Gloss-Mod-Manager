@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -19,7 +19,7 @@ async function installCraft(mod: IModInfo, isInstall: boolean) {
     );
 
     for (const item of mod.modFiles) {
-        if ((await extname(item)).toLowerCase() !== ".craft") {
+        if ((await FileHandler.getFileExtension(item)).toLowerCase() !== "craft") {
             continue;
         }
 
@@ -126,7 +126,7 @@ export const supportedGames = async () =>
 
             for (const item of mod.modFiles) {
                 if (item.toLowerCase().includes("gamedata")) gameData = true;
-                if ((await extname(item)).toLowerCase() === ".craft")
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "craft")
                     craft = true;
             }
 

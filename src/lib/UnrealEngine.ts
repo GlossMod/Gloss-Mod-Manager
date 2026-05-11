@@ -1,7 +1,7 @@
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
-import { dirname, extname, join } from "@tauri-apps/api/path";
+import { dirname, join } from "@tauri-apps/api/path";
 
 export class UnrealEngine {
     public static async modType(
@@ -263,7 +263,7 @@ export class UnrealEngine {
         let scripts = false;
 
         for (const item of mod.modFiles) {
-            if ((await extname(item)) === "pak") pak = true;
+            if ((await FileHandler.getFileExtension(item)) === "pak") pak = true;
             if (await FileHandler.compareFileName(item, "Enabled.txt"))
                 mods = true;
             if (await FileHandler.compareFileName(item, "ue4ss.dll"))

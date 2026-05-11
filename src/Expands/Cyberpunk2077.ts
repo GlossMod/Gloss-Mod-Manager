@@ -1,4 +1,4 @@
-import { basename, dirname, extname, join } from "@tauri-apps/api/path";
+import { basename, dirname, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -182,9 +182,9 @@ export const supportedGames = async () =>
                     mainFolder = true;
                 }
 
-                const extension = (await extname(item)).toLowerCase();
-                if (extension === ".archive") archive = true;
-                if (extension === ".lua") lua = true;
+                const extension = await FileHandler.getFileExtension(item);
+                if (extension === "archive") archive = true;
+                if (extension === "lua") lua = true;
                 if ((await basename(item)) === "cyber_engine_tweaks.asi")
                     cet = true;
             }

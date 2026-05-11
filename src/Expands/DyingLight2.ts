@@ -1,4 +1,4 @@
-import { extname, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -44,7 +44,7 @@ async function getNextPakName() {
 
     const dataFolder = await join(gameStorage, "ph", "source");
     const pakFiles = (await FileHandler.getFolderFiles(dataFolder)).filter(
-        async (item) => (await extname(item)).toLowerCase() === ".pak",
+        async (item) => (await FileHandler.getFileExtension(item)).toLowerCase() === "pak",
     );
     const numbers = pakFiles.map((item) => {
         const matched = item.match(/data(\d+)/iu);
@@ -68,7 +68,7 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
         const source = await join(modStorage, item);
         if (
             !(await FileHandler.isFile(source)) ||
-            (await extname(source)).toLowerCase() !== ".pak"
+            (await FileHandler.getFileExtension(source)).toLowerCase() !== "pak"
         ) {
             continue;
         }
@@ -90,8 +90,8 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
         const matched = await pakList.find(
             async (record) =>
                 record[0] === String(mod.id) &&
-                (await extname(record[1])).toLowerCase() ===
-                    (await extname(source)).toLowerCase(),
+                (await FileHandler.getFileExtension(record[1])).toLowerCase() ===
+                    (await FileHandler.getFileExtension(source)).toLowerCase(),
         );
         if (!matched) {
             continue;
@@ -206,7 +206,7 @@ export const supportedGames = async () =>
         ],
         async checkModType(mod) {
             for (const item of mod.modFiles) {
-                if ((await extname(item)).toLowerCase() === ".pak") {
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "pak") {
                     return 1;
                 }
             }

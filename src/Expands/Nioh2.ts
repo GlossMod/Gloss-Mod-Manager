@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -125,7 +125,7 @@ export const supportedGames = async () =>
             for (const item of mod.modFiles) {
                 if ((await basename(item)) === "d3dcompiler_46.dll")
                     modEnabler = true;
-                if ((await extname(item)).toLowerCase() === ".ini") mods = true;
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "ini") mods = true;
             }
 
             if (modEnabler) return 1;

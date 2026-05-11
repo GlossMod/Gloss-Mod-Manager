@@ -1,4 +1,4 @@
-import { join, basename, extname } from "@tauri-apps/api/path";
+import { join, basename } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
 import { FileHandler } from "@/lib/FileHandler";
@@ -127,7 +127,7 @@ export const supportedGames = async () =>
 
             for (const item of mod.modFiles) {
                 if ((await basename(item)) == "pack.json") pack = true;
-                if ((await extname(item)) == "tmod") tmod = true;
+                if ((await FileHandler.getFileExtension(item)) == "tmod") tmod = true;
             }
 
             if (pack) return 1;

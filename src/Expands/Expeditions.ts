@@ -1,6 +1,7 @@
-import { join, extname } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
+import { FileHandler } from "@/lib/FileHandler";
 
 /**
  * @description 远征：泥泞奔驰游戏 支持
@@ -81,7 +82,7 @@ export const supportedGames = async () =>
             let pak = false;
 
             for (const item of mod.modFiles) {
-                if ((await extname(item)) == "pak") pak = true;
+                if ((await FileHandler.getFileExtension(item)) == "pak") pak = true;
             }
 
             if (pak) return 1;

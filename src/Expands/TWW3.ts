@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -19,7 +19,7 @@ async function handlePack(
     }
 
     for (const item of mod.modFiles) {
-        if ((await extname(item)).toLowerCase() !== ".pack") {
+        if ((await FileHandler.getFileExtension(item)).toLowerCase() !== "pack") {
             continue;
         }
 
@@ -123,7 +123,7 @@ export const supportedGames = async () =>
             let ui = false;
 
             for (const item of mod.modFiles) {
-                if ((await extname(item)).toLowerCase() === ".pack")
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "pack")
                     pack = true;
                 if (item.toLowerCase().includes("ui")) ui = true;
             }

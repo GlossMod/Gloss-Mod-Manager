@@ -1,6 +1,7 @@
-import { extname, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
+import { FileHandler } from "@/lib/FileHandler";
 
 /**
  * @description 幽浮 2 支持
@@ -68,7 +69,7 @@ export const supportedGames = async () =>
         ],
         async checkModType(mod) {
             for (const item of mod.modFiles) {
-                if ((await extname(item)).toLowerCase() === ".xcommod") {
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "xcommod") {
                     return 1;
                 }
             }

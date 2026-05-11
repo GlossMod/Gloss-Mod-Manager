@@ -13,6 +13,7 @@ export interface IThirdPartyListQuery {
     page: number;
     pageSize: number;
     searchText: string;
+    nexusModsFacets?: INexusModsFacetSelection;
 }
 
 export interface IThirdPartyModFile {
@@ -60,6 +61,25 @@ export interface IThirdPartyModListResult {
     pageSize: number;
     totalCount: number;
     totalPages: number;
+    facets?: IThirdPartyModFacets;
+}
+
+export interface IThirdPartyModFacetOption {
+    label: string;
+    value: string;
+    count: number;
+}
+
+export interface IThirdPartyModFacets {
+    categoryName: IThirdPartyModFacetOption[];
+    languageName: IThirdPartyModFacetOption[];
+    tag: IThirdPartyModFacetOption[];
+}
+
+export interface INexusModsFacetSelection {
+    categoryName?: string;
+    languageName?: string;
+    tag?: string;
 }
 
 export interface IThirdPartyProviderOption {
@@ -105,10 +125,17 @@ interface IGameBananaListResponse {
 interface INexusGraphqlResponse {
     data?: {
         mods?: {
+            facetsData?: INexusModsFacetData;
             nodes?: INexusMods[];
             totalCount?: number;
         };
     };
+}
+
+interface INexusModsFacetData {
+    categoryName?: Record<string, number>;
+    languageName?: Record<string, number>;
+    tag?: Record<string, number>;
 }
 
 interface INexusModsV1Mod {
@@ -242,7 +269,7 @@ export async function fetchThirdPartyMods(
     game: ISupportedGames,
     query: IThirdPartyListQuery,
     nexusUser?: INexusModsUser | null,
-) {
+): Promise<IThirdPartyModListResult> {
     switch (provider) {
         case "NexusMods":
             return fetchNexusModsList(game, query, nexusUser);
@@ -425,6 +452,54 @@ function emptyListResult(
         pageSize: normalizePageSize(query.pageSize),
         totalCount: 0,
         totalPages: 0,
+        facets: emptyThirdPartyModFacets(),
+    };
+}
+
+function emptyThirdPartyModFacets(): IThirdPartyModFacets {
+    return {
+        categoryName: [],
+        languageName: [],
+        tag: [],
+    };
+}
+
+function normalizeFacetOptions(source?: Record<string, number>) {
+    return Object.entries(source ?? {})
+        .map(([value, count]) => {
+            return {
+                label: value,
+                value,
+                count: Math.max(0, Number(count) || 0),
+            } satisfies IThirdPartyModFacetOption;
+        })
+        .filter((item) => item.value)
+        .sort((left, right) => {
+            const countDifference = right.count - left.count;
+
+            return countDifference || left.label.localeCompare(right.label);
+        });
+}
+
+function normalizeNexusModsFacets(
+    facetsData?: INexusModsFacetData,
+): IThirdPartyModFacets {
+    return {
+        categoryName: normalizeFacetOptions(facetsData?.categoryName),
+        languageName: normalizeFacetOptions(facetsData?.languageName),
+        tag: normalizeFacetOptions(facetsData?.tag),
+    };
+}
+
+function buildNexusModsFacetVariables(selection?: INexusModsFacetSelection) {
+    const categoryName = normalizeText(selection?.categoryName);
+    const languageName = normalizeText(selection?.languageName);
+    const tag = normalizeText(selection?.tag);
+
+    return {
+        categoryName: categoryName ? [categoryName] : [],
+        languageName: languageName ? [languageName] : [],
+        tag: tag ? [tag] : [],
     };
 }
 
@@ -606,17 +681,20 @@ async function fetchNexusModsList(
     const gql = `
         query ModsListing(
             $count: Int = 0
+            $facets: ModsFacet
             $filter: ModsFilter
             $offset: Int
             $sort: [ModsSort!]
         ) {
             mods(
                 count: $count
+                facets: $facets
                 filter: $filter
                 offset: $offset
                 sort: $sort
                 viewUserBlockedContent: false
             ) {
+                facetsData
                 nodes {
                     adultContent
                     createdAt
@@ -655,6 +733,11 @@ async function fetchNexusModsList(
     `;
     const variables: {
         count: number;
+        facets: {
+            categoryName: string[];
+            languageName: string[];
+            tag: string[];
+        };
         offset: number;
         sort: Array<Record<string, { direction: "DESC" }>>;
         filter: {
@@ -669,6 +752,8 @@ async function fetchNexusModsList(
         };
     } = {
         count: pageSize,
+        // facetsData 是 NexusMods 返回的列表级聚合分类，用于驱动分类筛选。
+        facets: buildNexusModsFacetVariables(query.nexusModsFacets),
         offset: (page - 1) * pageSize,
         sort: [{ updatedAt: { direction: "DESC" } }],
         filter: {
@@ -708,6 +793,7 @@ async function fetchNexusModsList(
 
     const items = payload.data?.mods?.nodes ?? [];
     const totalCount = payload.data?.mods?.totalCount ?? 0;
+    const facets = normalizeNexusModsFacets(payload.data?.mods?.facetsData);
 
     return {
         items: items.map((item) => {
@@ -747,6 +833,7 @@ async function fetchNexusModsList(
         pageSize,
         totalCount,
         totalPages: totalCount > 0 ? Math.ceil(totalCount / pageSize) : 0,
+        facets,
     } satisfies IThirdPartyModListResult;
 }
 

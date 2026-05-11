@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -134,7 +134,7 @@ export const supportedGames = async () =>
             for (const item of mod.modFiles) {
                 if ((await basename(item)) === "yumia_mod_insert_into_rdb.exe")
                     tools = true;
-                if ((await extname(item)).toLowerCase() === ".fdata")
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "fdata")
                     fdata = true;
             }
 

@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
 import { UnrealEngine } from "@/lib/UnrealEngine";
@@ -25,7 +25,7 @@ async function handleEsp(
         .filter((item) => item !== "");
     const espFileList: string[] = [];
     for (const item of mod.modFiles) {
-        if ((await extname(item)).toLowerCase() === ".esp") {
+        if ((await FileHandler.getFileExtension(item)).toLowerCase() === "esp") {
             espFileList.push(item);
         }
     }
@@ -174,7 +174,7 @@ export const supportedGames = async () => {
             for (const item of mod.modFiles) {
                 const pathParts = FileHandler.pathToArray(item);
                 if (pathParts.includes("OblivionRemastered")) rootPath = true;
-                if ((await extname(item)).toLowerCase() === ".esp") esp = true;
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "esp") esp = true;
                 if (pathParts.includes("Data")) data = true;
             }
 

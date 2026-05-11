@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -20,7 +20,7 @@ async function handlePakMod(mod: IModInfo, isInstall: boolean) {
     }
 
     for (const item of mod.modFiles) {
-        if ((await extname(item)).toLowerCase() !== ".pak") {
+        if ((await FileHandler.getFileExtension(item)).toLowerCase() !== "pak") {
             continue;
         }
 
@@ -98,7 +98,7 @@ export const supportedGames = async () =>
         ],
         async checkModType(mod) {
             for (const item of mod.modFiles) {
-                if ((await extname(item)).toLowerCase() === ".pak") {
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "pak") {
                     return 1;
                 }
             }

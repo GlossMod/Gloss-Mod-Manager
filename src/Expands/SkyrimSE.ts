@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import * as ini from "ini";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
@@ -47,8 +47,8 @@ async function setPlugins(mod: IModInfo, install: boolean) {
         .filter((item) => item !== "");
 
     for (const item of mod.modFiles) {
-        const extension = (await extname(item)).toLowerCase();
-        if (extension !== ".esp" && extension !== ".esm") {
+        const extension = await FileHandler.getFileExtension(item);
+        if (extension !== "esp" && extension !== "esm") {
             continue;
         }
 
@@ -193,11 +193,11 @@ export const supportedGames = async () =>
             let plugins = false;
 
             for (const item of mod.modFiles) {
-                const extension = (await extname(item)).toLowerCase();
+                const extension = await FileHandler.getFileExtension(item);
                 if (item.toLowerCase().includes("data")) data = true;
                 if (item.toLowerCase().includes("plugins")) plugins = true;
                 if ((await basename(item)) === "skse64_loader.exe") skse = true;
-                if (extension === ".esp" || extension === ".esm") data = true;
+                if (extension === "esp" || extension === "esm") data = true;
             }
 
             if (skse) return 2;

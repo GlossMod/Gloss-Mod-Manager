@@ -1,4 +1,4 @@
-import { basename, dirname, extname, join } from "@tauri-apps/api/path";
+import { basename, dirname, join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
@@ -77,7 +77,7 @@ async function handleDllPlugins(
     }
 
     for (const item of mod.modFiles) {
-        if ((await extname(item)).toLowerCase() !== ".dll") {
+        if ((await FileHandler.getFileExtension(item)).toLowerCase() !== "dll") {
             continue;
         }
 
@@ -201,7 +201,7 @@ export const supportedGames = async () =>
                     isBin = true;
                 if ((await basename(item)).toLowerCase() === "modconfig.json")
                     isNext = true;
-                if ((await extname(item)).toLowerCase() === ".dll")
+                if ((await FileHandler.getFileExtension(item)).toLowerCase() === "dll")
                     isPlugin = true;
             }
 

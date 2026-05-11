@@ -1,4 +1,4 @@
-import { join, extname } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
 import { FileHandler } from "@/lib/FileHandler";
@@ -113,7 +113,7 @@ export const supportedGames = async () =>
             for (const item of mod.modFiles) {
                 // if (basename(item) == 'python35.dll') loader = true
                 // 判断路径是否包含 data
-                if ((await extname(item)) == "modinfo") mods = true;
+                if ((await FileHandler.getFileExtension(item)) == "modinfo") mods = true;
             }
 
             // if (loader) return 1

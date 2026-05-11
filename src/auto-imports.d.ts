@@ -540,7 +540,7 @@ declare global {
   export type { ThirdPartyQueueDownloadStatus, IQueueThirdPartyDownloadOptions, IQueueThirdPartyDownloadResult } from './lib/third-party-download-queue'
   import('./lib/third-party-download-queue')
   // @ts-ignore
-  export type { NexusModsAuthorizationError, ThirdPartyProvider, ThirdPartyDescriptionFormat, IThirdPartyListQuery, IThirdPartyModFile, IThirdPartyModItem, IThirdPartyModDetail, IThirdPartyModListResult, IThirdPartyProviderOption, INexusModsDownloadAuthorization } from './lib/third-party-mod-api'
+  export type { NexusModsAuthorizationError, ThirdPartyProvider, ThirdPartyDescriptionFormat, IThirdPartyListQuery, IThirdPartyModFile, IThirdPartyModItem, IThirdPartyModDetail, IThirdPartyModListResult, IThirdPartyModFacetOption, IThirdPartyModFacets, INexusModsFacetSelection, IThirdPartyProviderOption, INexusModsDownloadAuthorization } from './lib/third-party-mod-api'
   import('./lib/third-party-mod-api')
   // @ts-ignore
   export type { IDownloadFilePickerItem, IDownloadFilePickerRequest } from './stores/download-picker'

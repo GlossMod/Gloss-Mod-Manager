@@ -243,16 +243,22 @@ async function collectRelativeModFiles(targetFolder: string) {
     );
 }
 
-function buildImportedMod(
+async function buildImportedMod(
     source: ILocalModImportSource,
     importedMods: IModInfo[],
     modId: number,
     originalName: string,
+    modRoot: string,
     modFiles: string[],
 ) {
     const manager = useManager();
     const metadata = source.metadata ?? {};
     const targetMod = source.targetMod;
+    const cover = await resolveImportedCoverPath(
+        modRoot,
+        modFiles,
+        metadata.cover ?? targetMod?.cover,
+    );
 
     return normalizeMod(
         {
@@ -268,7 +274,7 @@ function buildImportedMod(
             modAuthor: metadata.modAuthor ?? targetMod?.modAuthor ?? "",
             modWebsite: metadata.modWebsite ?? targetMod?.modWebsite ?? "",
             modDesc: metadata.modDesc ?? targetMod?.modDesc ?? "",
-            cover: metadata.cover ?? targetMod?.cover,
+            cover,
             weight:
                 targetMod?.weight ??
                 manager.managerModList.length + importedMods.length + 1,
@@ -344,6 +350,50 @@ function getErrorMessage(error: unknown) {
     }
 
     return "未知错误";
+}
+
+function pickImportedCoverFile(modFiles: string[]) {
+    const normalizedFiles = modFiles.map((filePath) => {
+        return {
+            original: filePath,
+            normalized: normalizeSlashes(filePath).toLowerCase(),
+        };
+    });
+
+    const keywordMatched = normalizedFiles.find(({ normalized }) => {
+        return ["image", "cover", "logo", "icon"].some((keyword) => {
+            return normalized.includes(keyword);
+        });
+    });
+
+    if (keywordMatched) {
+        return keywordMatched.original;
+    }
+
+    return normalizedFiles.find(({ normalized }) => {
+        return [".jpg", ".png", ".jpeg", ".webp"].some((extension) => {
+            return normalized.endsWith(extension);
+        });
+    })?.original;
+}
+
+async function resolveImportedCoverPath(
+    modRoot: string,
+    modFiles: string[],
+    cover?: string,
+) {
+    if (cover?.trim()) {
+        return cover;
+    }
+
+    const coverFile = pickImportedCoverFile(modFiles);
+
+    if (!coverFile) {
+        return cover;
+    }
+
+    // 本地导入的封面文件位于当前 Mod 根目录下，直接持久化绝对路径即可供界面显示。
+    return await join(modRoot, coverFile);
 }
 
 function getSevenZipErrorText(error: SidecarExecutionError) {
@@ -488,11 +538,12 @@ export async function importLocalModSources(
             }
 
             const originalName = await basename(source.path);
-            const mod = buildImportedMod(
+            const mod = await buildImportedMod(
                 source,
                 importedMods,
                 modId,
                 originalName,
+                targetFolder,
                 modFiles,
             );
 

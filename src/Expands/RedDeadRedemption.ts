@@ -1,6 +1,7 @@
-import { basename, extname } from "@tauri-apps/api/path";
+import { basename } from "@tauri-apps/api/path";
 import { ElMessage } from "element-plus-message";
 import { Manager } from "@/lib/Manager";
+import { FileHandler } from "@/lib/FileHandler";
 
 export const supportedGames = async () =>
     ({
@@ -148,8 +149,8 @@ export const supportedGames = async () =>
                 if ((await basename(item)) == "dinput8.dll")
                     ScriptHookRDR = true;
                 if ((await basename(item)) == "RedHook.dll") RedHook = true;
-                if ((await extname(item)) == "asi") asi = true;
-                if ((await extname(item)) == "red") red = true;
+                if ((await FileHandler.getFileExtension(item)) == "asi") asi = true;
+                if ((await FileHandler.getFileExtension(item)) == "red") red = true;
             }
 
             if (ScriptHookRDR) return 1;

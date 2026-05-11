@@ -1,4 +1,4 @@
-import { join, basename, extname } from "@tauri-apps/api/path";
+import { join, basename } from "@tauri-apps/api/path";
 import { Manager } from "@/lib/Manager";
 import { FileHandler } from "@/lib/FileHandler";
 import { UnityGame } from "@/lib/UnityGame";
@@ -91,8 +91,8 @@ export const supportedGames = async () =>
             for (const item of mod.modFiles) {
                 if ((await basename(item)).toLowerCase() == "winhttp.dll")
                     BepInEx = true;
-                if ((await extname(item)) == "dll") plugins = true;
-                if ((await extname(item)) == "cok") map = true;
+                if ((await FileHandler.getFileExtension(item)) == "dll") plugins = true;
+                if ((await FileHandler.getFileExtension(item)) == "cok") map = true;
             }
 
             if (BepInEx) return 1;

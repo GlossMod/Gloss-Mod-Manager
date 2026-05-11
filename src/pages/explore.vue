@@ -61,17 +61,6 @@ watch(
                 </CardTitle>
             </CardHeader>
             <CardContent class="flex flex-wrap gap-2">
-                <!-- <Button
-                    v-for="item in providerOptions"
-                    :key="item.value"
-                    :variant="
-                        activeProvider === item.value ? 'secondary' : 'outline'
-                    "
-                    :disabled="!item.supported"
-                    @click="selectProvider(item.value)"
-                >
-                    {{ item.label }}
-                </Button> -->
                 <ToggleGroup type="single" v-model:model-value="activeProvider">
                     <ToggleGroupItem
                         v-for="item in providerOptions"

@@ -1,4 +1,4 @@
-import { basename, extname, join } from "@tauri-apps/api/path";
+import { basename, join } from "@tauri-apps/api/path";
 import * as ini from "ini";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
@@ -47,8 +47,8 @@ async function setPlugins(mod: IModInfo, install: boolean) {
         .filter((item) => item !== "");
 
     for (const item of mod.modFiles) {
-        const extension = (await extname(item)).toLowerCase();
-        if (extension !== ".esp" && extension !== ".esm") {
+        const extension = await FileHandler.getFileExtension(item);
+        if (extension !== "esp" && extension !== "esm") {
             continue;
         }
 
@@ -203,12 +203,12 @@ export const supportedGames = async () =>
             let f4se = false;
 
             for (const item of mod.modFiles) {
-                const extension = (await extname(item)).toLowerCase();
-                if (extension === ".dll") plugins = true;
+                const extension = await FileHandler.getFileExtension(item);
+                if (extension === "dll") plugins = true;
                 if ((await basename(item)).toLowerCase().includes("data"))
                     data = true;
                 if ((await basename(item)) === "f4se_loader.exe") f4se = true;
-                if (extension === ".esp" || extension === ".esm") data = true;
+                if (extension === "esp" || extension === "esm") data = true;
             }
 
             if (f4se) return 3;

@@ -1,4 +1,4 @@
-import { basename, dirname, extname, join } from "@tauri-apps/api/path";
+import { basename, dirname, join } from "@tauri-apps/api/path";
 import { Builder, parseStringPromise } from "xml2js";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
@@ -113,7 +113,7 @@ async function handleAsi(mod: IModInfo, isInstall: boolean) {
         }
     }
 
-    return Manager.installByFileSibling(mod, "", ".asi", isInstall, true);
+    return Manager.installByFileSibling(mod, "", "asi", isInstall, true);
 }
 
 async function handleLml(
@@ -288,11 +288,12 @@ export const supportedGames = async () =>
 
             for (const item of mod.modFiles) {
                 const pathParts = FileHandler.pathToArray(item);
+                const extension = await FileHandler.getFileExtension(item);
+
                 if (pathParts.some((part) => folderList.includes(part)))
                     rootFolder = true;
-                if ((await extname(item)).toLowerCase() === ".asi") asi = true;
-                if ((await extname(item)).toLowerCase() === ".dll")
-                    scripts = true;
+                if (extension === "asi") asi = true;
+                if (extension === "dll") scripts = true;
                 if ((await basename(item)) === "install.xml") lml = true;
                 if ((await basename(item)) === "ScriptHookRDR2.dll")
                     scriptHookRDR2 = true;
