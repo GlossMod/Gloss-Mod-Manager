@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import MarkdownIt from "markdown-it";
 import markdownItAnchor from "markdown-it-anchor";
 import { ElMessage } from "element-plus-message";
+import { useI18n } from "vue-i18n";
 import { Aria2Rpc, type IAria2RpcTask } from "@/lib/aria2-rpc";
 import {
     hasThirdPartyMultipleFiles,
@@ -75,15 +76,21 @@ const props = defineProps<{
 const manager = useManager();
 const settings = useSettings();
 const router = useRouter();
+const { t, locale } = useI18n();
 const taskMetaMap = PersistentStore.useValue<
     Record<string, IGlossDownloadTaskMeta>
 >("aria2TaskMetaMap", {});
-const numberFormatter = new Intl.NumberFormat("zh-CN");
-const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-});
+const numberFormatter = computed(
+    () => new Intl.NumberFormat(locale.value.replace(/_/gu, "-")),
+);
+const dateFormatter = computed(
+    () =>
+        new Intl.DateTimeFormat(locale.value.replace(/_/gu, "-"), {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+        }),
+);
 const markdownParser = new MarkdownIt({
     html: true,
     breaks: true,
@@ -99,6 +106,7 @@ const loading = ref(false);
 const errorMessage = ref("");
 const page = ref(1);
 const pageSize = ref(DEFAULT_PAGE_SIZE);
+const isFiltersExpanded = ref(false);
 const totalCount = ref(0);
 const totalPages = ref(0);
 const searchKeyword = ref("");
@@ -159,7 +167,7 @@ const currentPageFileCount = computed(() => {
 });
 const currentPageFileCountLabel = computed(() => {
     if (mods.value.some((item) => usesLazyFileLoading(item))) {
-        return "待加载";
+        return t("explore.status.pendingLoad");
     }
 
     return formatNumber(currentPageFileCount.value);
@@ -181,19 +189,19 @@ const downloadStatusMap = computed<Record<string, IExploreDownloadStatus>>(
 );
 const summaryCards = computed(() => [
     {
-        label: "结果总数",
+        label: t("explore.summary.totalResults"),
         value: formatNumber(totalCount.value),
     },
     {
-        label: "当前页",
+        label: t("explore.summary.currentPage"),
         value: String(totalPages.value > 0 ? page.value : 0),
     },
     {
-        label: "总页数",
+        label: t("explore.summary.totalPages"),
         value: String(totalPages.value),
     },
     {
-        label: "当前页资源",
+        label: t("explore.summary.currentPageResources"),
         value: currentPageFileCountLabel.value,
     },
 ]);
@@ -355,7 +363,7 @@ async function fetchMods() {
         nexusFacets.value = createEmptyThirdPartyModFacets();
         totalCount.value = 0;
         totalPages.value = 0;
-        errorMessage.value = "请先在游戏页选择当前管理的游戏。";
+        errorMessage.value = t("explore.messages.selectGameFirst");
         return;
     }
 
@@ -364,7 +372,9 @@ async function fetchMods() {
         nexusFacets.value = createEmptyThirdPartyModFacets();
         totalCount.value = 0;
         totalPages.value = 0;
-        errorMessage.value = `当前游戏暂未配置 ${providerLabel.value} 数据源。`;
+        errorMessage.value = t("explore.thirdParty.providerUnsupported", {
+            provider: providerLabel.value,
+        });
         return;
     }
 
@@ -408,7 +418,9 @@ async function fetchMods() {
         totalPages.value = 0;
         errorMessage.value = toErrorMessage(
             error,
-            `获取 ${providerLabel.value} 列表失败。`,
+            t("explore.thirdParty.fetchFailed", {
+                provider: providerLabel.value,
+            }),
         );
     } finally {
         if (currentRequestSequence === requestSequence) {
@@ -438,7 +450,9 @@ async function openModDetail(item: IThirdPartyModItem) {
 
         detailError.value = toErrorMessage(
             error,
-            `读取 ${providerLabel.value} 详情失败。`,
+            t("explore.thirdParty.readDetailFailed", {
+                provider: providerLabel.value,
+            }),
         );
     } finally {
         if (currentDetailRequestSequence === detailRequestSequence) {
@@ -449,12 +463,12 @@ async function openModDetail(item: IThirdPartyModItem) {
 
 async function openLatestResource(item: IThirdPartyModItem) {
     if (!currentGame.value) {
-        ElMessage.warning("当前没有已选中的游戏。");
+        ElMessage.warning(t("explore.messages.noSelectedGame"));
         return;
     }
 
     if (!item.primaryFile && item.source !== "NexusMods") {
-        ElMessage.warning("当前 Mod 没有可用资源。");
+        ElMessage.warning(t("explore.messages.noAvailableResourceForMod"));
         return;
     }
 
@@ -473,7 +487,12 @@ async function openLatestResource(item: IThirdPartyModItem) {
         }
 
         ElMessage.error(
-            toErrorMessage(error, `提交 ${providerLabel.value} 下载任务失败。`),
+            toErrorMessage(
+                error,
+                t("explore.thirdParty.submitDownloadFailed", {
+                    provider: providerLabel.value,
+                }),
+            ),
         );
     } finally {
         if (queueingResourceKey.value === resourceKey) {
@@ -484,7 +503,7 @@ async function openLatestResource(item: IThirdPartyModItem) {
 
 async function loadModDetail(item: IThirdPartyModItem) {
     if (!currentGame.value) {
-        throw new Error("当前没有已选中的游戏。");
+        throw new Error(t("explore.messages.noSelectedGame"));
     }
 
     return fetchThirdPartyModDetail(
@@ -593,7 +612,7 @@ function resolveFileDownloadStatus(
     if (!file && mod.source !== "NexusMods") {
         return {
             state: "missing",
-            label: "暂无资源",
+            label: t("explore.status.noResource"),
             progress: 0,
         };
     }
@@ -603,7 +622,7 @@ function resolveFileDownloadStatus(
     if (!criteria) {
         return {
             state: "missing",
-            label: "暂无资源",
+            label: t("explore.status.noResource"),
             progress: 0,
         };
     }
@@ -619,43 +638,43 @@ function resolveFileDownloadStatus(
         case "active":
             return {
                 state: "active",
-                label: "下载中",
+                label: t("explore.status.downloading"),
                 progress: getTaskProgress(task),
             };
         case "waiting":
             return {
                 state: "waiting",
-                label: "等待中",
+                label: t("explore.status.waiting"),
                 progress: getTaskProgress(task),
             };
         case "paused":
             return {
                 state: "paused",
-                label: "已暂停",
+                label: t("explore.status.paused"),
                 progress: getTaskProgress(task),
             };
         case "error":
             return {
                 state: "error",
-                label: "下载失败",
+                label: t("explore.status.failed"),
                 progress: 0,
             };
         case "complete":
             return {
                 state: "complete",
-                label: "重新下载",
+                label: t("explore.status.redownload"),
                 progress: 100,
             };
         case "imported":
             return {
                 state: "imported",
-                label: "已添加",
+                label: t("explore.status.imported"),
                 progress: 100,
             };
         default:
             return {
                 state: "none",
-                label: "加入下载",
+                label: t("explore.status.addDownload"),
                 progress: 0,
             };
     }
@@ -671,7 +690,7 @@ function getDownloadStatus(item: IThirdPartyModItem) {
     return (
         downloadStatusMap.value[`${item.source}-${item.id}`] ?? {
             state: "none",
-            label: "加入下载",
+            label: t("explore.status.addDownload"),
             progress: 0,
         }
     );
@@ -695,13 +714,13 @@ function getFileDownloadButtonLabel(
     file?: IThirdPartyModFile | null,
 ) {
     if (!file && mod.source !== "NexusMods") {
-        return "暂无资源";
+        return t("explore.status.noResource");
     }
 
     const resourceKey = `${mod.source}-${mod.id}-${file?.id ?? "latest"}`;
 
     if (queueingResourceKey.value === resourceKey) {
-        return "提交中...";
+        return t("explore.status.submitting");
     }
 
     return getFileDownloadStatus(mod, file).label;
@@ -728,7 +747,7 @@ function isFileDownloadActionDisabled(
 
 async function queueDownload(mod: IThirdPartyModDetail, fileId?: string) {
     if (!currentGame.value) {
-        throw new Error("当前没有已选中的游戏。");
+        throw new Error(t("explore.messages.noSelectedGame"));
     }
 
     const normalizedFileId = fileId?.trim() ?? "";
@@ -746,7 +765,7 @@ async function queueDownload(mod: IThirdPartyModDetail, fileId?: string) {
         });
 
         if (!result) {
-            ElMessage.info("已取消选择下载文件。");
+            ElMessage.info(t("explore.messages.downloadFileCanceled"));
             return;
         }
 
@@ -778,7 +797,7 @@ async function handleDownload(
     fileId?: string,
 ) {
     if (!mod) {
-        ElMessage.warning("当前没有可下载的文件。");
+        ElMessage.warning(t("explore.messages.noDownloadableFile"));
         return;
     }
 
@@ -793,7 +812,12 @@ async function handleDownload(
         }
 
         ElMessage.error(
-            toErrorMessage(error, `提交 ${providerLabel.value} 下载任务失败。`),
+            toErrorMessage(
+                error,
+                t("explore.thirdParty.submitDownloadFailed", {
+                    provider: providerLabel.value,
+                }),
+            ),
         );
     }
 }
@@ -802,7 +826,7 @@ async function openModWebsite(item?: { website?: string | null } | null) {
     const targetUrl = item?.website?.trim() ?? "";
 
     if (!targetUrl) {
-        ElMessage.warning("当前 Mod 没有可打开的站点地址。");
+        ElMessage.warning(t("explore.messages.noOpenableWebsite"));
         return;
     }
 
@@ -811,7 +835,7 @@ async function openModWebsite(item?: { website?: string | null } | null) {
     } catch (error: unknown) {
         console.error("打开第三方页面失败");
         console.error(error);
-        ElMessage.error("打开第三方页面失败。");
+        ElMessage.error(t("explore.messages.openThirdPartyFailed"));
     }
 }
 
@@ -820,7 +844,7 @@ async function maybeRedirectForNexusAuth(error: unknown) {
         return false;
     }
 
-    ElMessage.warning("请先授权NexusMods");
+    ElMessage.warning(t("explore.messages.nexusAuthorizationRequired"));
     await router.push({
         path: "/settings",
         query: {
@@ -880,7 +904,7 @@ function handleCoverError(event: Event) {
 }
 
 function formatNumber(value?: number) {
-    return numberFormatter.format(value ?? 0);
+    return numberFormatter.value.format(value ?? 0);
 }
 
 function formatFacetOptionLabel(item: IThirdPartyModFacetOption) {
@@ -889,7 +913,7 @@ function formatFacetOptionLabel(item: IThirdPartyModFacetOption) {
 
 function formatDate(value?: string) {
     if (!value) {
-        return "未知时间";
+        return t("explore.common.unknownTime");
     }
 
     const parsed = new Date(value);
@@ -897,14 +921,14 @@ function formatDate(value?: string) {
         return value;
     }
 
-    return dateFormatter.format(parsed);
+    return dateFormatter.value.format(parsed);
 }
 
 function formatBytes(size?: number) {
     const normalized = Number(size ?? 0);
 
     if (!Number.isFinite(normalized) || normalized <= 0) {
-        return "未知大小";
+        return t("explore.common.unknownSize");
     }
 
     const units = ["B", "KB", "MB", "GB", "TB"];
@@ -929,35 +953,37 @@ function usesLazyFileLoading(item: IThirdPartyModItem) {
 
 function getResourceCountLabel(item: IThirdPartyModItem) {
     if (usesLazyFileLoading(item)) {
-        return "待加载";
+        return t("explore.status.pendingLoad");
     }
 
-    return `${item.filesCount} 个资源`;
+    return t("explore.resources.count", { count: item.filesCount });
 }
 
 function getResourceSizeLabel(item: IThirdPartyModItem) {
     if (usesLazyFileLoading(item)) {
-        return "点击后加载";
+        return t("explore.resources.clickToLoad");
     }
 
-    return item.primaryFile ? formatBytes(item.primaryFile.size) : "大小未知";
+    return item.primaryFile
+        ? formatBytes(item.primaryFile.size)
+        : t("explore.common.unknownSize");
 }
 
 function getPrimaryResourceName(item: IThirdPartyModItem) {
     if (usesLazyFileLoading(item)) {
-        return "点击下载或查看详情后加载资源";
+        return t("explore.resources.loadAfterClick");
     }
 
-    return item.primaryFile?.name || "暂无资源名称";
+    return item.primaryFile?.name || t("explore.resources.noResourceName");
 }
 
 function getDownloadButtonLabel(item: IThirdPartyModItem) {
     if (queueingResourceKey.value.startsWith(`${item.source}-${item.id}-`)) {
-        return "提交中...";
+        return t("explore.status.submitting");
     }
 
     if (hasThirdPartyMultipleFiles(item)) {
-        return "选择文件下载";
+        return t("explore.actions.selectFileDownload");
     }
 
     return getDownloadStatus(item).label;
@@ -1013,11 +1039,11 @@ function isDownloadActionDisabled(item: IThirdPartyModItem) {
 
 function getModDownloadButtonLabel(mod: IThirdPartyModDetail) {
     if (queueingResourceKey.value.startsWith(`${mod.source}-${mod.id}-`)) {
-        return "提交中...";
+        return t("explore.status.submitting");
     }
 
     if (hasThirdPartyMultipleFiles(mod)) {
-        return "选择文件下载";
+        return t("explore.actions.selectFileDownload");
     }
 
     return getFileDownloadButtonLabel(mod, mod.primaryFile);
@@ -1074,7 +1100,7 @@ function renderDescription(
     format: ThirdPartyDescriptionFormat,
 ) {
     if (!source.trim()) {
-        return '<p class="empty-markdown">暂无详细介绍内容。</p>';
+        return `<p class="empty-markdown">${t("explore.detail.noDescription")}</p>`;
     }
 
     if (format === "markdown") {
@@ -1111,10 +1137,14 @@ function escapeHtml(source: string) {
                             class="rounded-full"
                             variant="outline"
                         >
-                            当前游戏 · {{ currentGameName }}
+                            {{
+                                t("explore.common.currentGame", {
+                                    game: currentGameName,
+                                })
+                            }}
                         </Badge>
                         <Badge v-else class="rounded-full" variant="outline">
-                            未选择本地游戏，当前无法获取平台结果
+                            {{ t("explore.thirdParty.noLocalGameProvider") }}
                         </Badge>
                     </div>
                     <div>
@@ -1128,24 +1158,32 @@ function escapeHtml(source: string) {
                         <span>
                             {{
                                 totalPages > 0
-                                    ? `第 ${page} / ${totalPages} 页`
-                                    : "暂无分页结果"
+                                    ? t("explore.common.pageProgress", {
+                                          page,
+                                          total: totalPages,
+                                      })
+                                    : t("explore.common.noPaginationResult")
                             }}
                         </span>
                         <span>·</span>
                         <span>
                             {{
                                 hasActiveFilters
-                                    ? "已启用筛选"
-                                    : "当前未启用额外筛选"
+                                    ? t("explore.common.filtersActive")
+                                    : t("explore.common.filtersInactive")
                             }}
                         </span>
                         <span>·</span>
                         <span>
-                            当前页下载量
-                            {{ formatNumber(currentPageDownloads) }}
+                            {{
+                                t("explore.thirdParty.currentPageDownloads", {
+                                    count: formatNumber(currentPageDownloads),
+                                })
+                            }}
                         </span>
-                        <span v-if="loading">· 正在更新结果</span>
+                        <span v-if="loading">
+                            · {{ t("explore.common.updating") }}
+                        </span>
                     </div>
                 </div>
 
@@ -1170,48 +1208,52 @@ function escapeHtml(source: string) {
             <div
                 class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
             >
-                <div class="flex flex-wrap items-center gap-2">
-                    <Badge class="rounded-full" variant="outline">
-                        筛选条件
-                    </Badge>
-                    <Badge
-                        v-if="currentGameName"
-                        class="rounded-full"
-                        variant="outline"
-                    >
-                        当前游戏：{{ currentGameName }}
-                    </Badge>
-                    <span v-else class="text-xs text-muted-foreground">
-                        当前未限定游戏范围
-                    </span>
+                <div class="flex-1 flex gap-3 lg:max-w-2xl">
+                    <div class="relative w-full">
+                        <Input
+                            v-model="searchKeyword"
+                            class="pr-10"
+                            :placeholder="t('explore.common.searchMods')"
+                            @keydown.enter="fetchMods"
+                        />
+                        <IconSearch
+                            class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
+                        />
+                    </div>
                 </div>
-                <Button size="sm" variant="outline" @click="resetFilters">
-                    <IconFilterX />
-                    重置筛选
-                </Button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        @click="isFiltersExpanded = !isFiltersExpanded"
+                    >
+                        <IconListFilter />
+                        {{
+                            isFiltersExpanded
+                                ? t("explore.actions.collapseFilters")
+                                : t("explore.actions.expandFilters")
+                        }}
+                    </Button>
+                    <Button size="sm" variant="outline" @click="resetFilters">
+                        <IconFilterX />
+                        {{ t("explore.actions.resetSearch") }}
+                    </Button>
+                </div>
             </div>
 
-            <div class="space-y-3">
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <div class="xl:col-span-2">
-                        <div class="text-sm font-medium">搜索 Mod</div>
-                        <div class="relative mt-2">
-                            <Input
-                                v-model="searchKeyword"
-                                class="pr-10"
-                                placeholder="搜索Mods"
-                            />
-                            <IconSearch
-                                class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-                            />
-                        </div>
-                    </div>
-
+            <div v-show="isFiltersExpanded" class="space-y-3 pt-3 border-t">
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div>
-                        <div class="text-sm font-medium">每页数量</div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.pageSize") }}
+                        </div>
                         <Select v-model="pageSize">
                             <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="选择每页数量" />
+                                <SelectValue
+                                    :placeholder="
+                                        t('explore.filters.choosePageSize')
+                                    "
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -1219,88 +1261,107 @@ function escapeHtml(source: string) {
                                     :key="item"
                                     :value="item"
                                 >
-                                    每页 {{ item }} 条
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-
-                <div
-                    v-if="isNexusModsProvider"
-                    class="grid gap-3 md:grid-cols-3"
-                >
-                    <div>
-                        <div class="text-sm font-medium">Nexus 分类</div>
-                        <Select
-                            v-model="selectedNexusCategory"
-                            :disabled="!nexusFacets.categoryName.length"
-                        >
-                            <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="全部分类" />
-                            </SelectTrigger>
-                            <SelectContent class="max-h-72">
-                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
-                                    全部分类
-                                </SelectItem>
-                                <SelectItem
-                                    v-for="item in nexusFacets.categoryName"
-                                    :key="item.value"
-                                    :value="item.value"
-                                >
-                                    {{ formatFacetOptionLabel(item) }}
+                                    {{
+                                        t("explore.filters.perPageOption", {
+                                            count: item,
+                                        })
+                                    }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
-                    <div>
-                        <div class="text-sm font-medium">Nexus 语言</div>
-                        <Select
-                            v-model="selectedNexusLanguage"
-                            :disabled="!nexusFacets.languageName.length"
-                        >
-                            <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="全部语言" />
-                            </SelectTrigger>
-                            <SelectContent class="max-h-72">
-                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
-                                    全部语言
-                                </SelectItem>
-                                <SelectItem
-                                    v-for="item in nexusFacets.languageName"
-                                    :key="item.value"
-                                    :value="item.value"
-                                >
-                                    {{ formatFacetOptionLabel(item) }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    <template v-if="isNexusModsProvider">
+                        <div>
+                            <div class="text-sm font-medium">
+                                {{ t("explore.filters.nexusCategory") }}
+                            </div>
+                            <Select
+                                v-model="selectedNexusCategory"
+                                :disabled="!nexusFacets.categoryName.length"
+                            >
+                                <SelectTrigger class="mt-2 w-full">
+                                    <SelectValue
+                                        :placeholder="
+                                            t('explore.filters.allCategories')
+                                        "
+                                    />
+                                </SelectTrigger>
+                                <SelectContent class="max-h-72">
+                                    <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                        {{ t("explore.filters.allCategories") }}
+                                    </SelectItem>
+                                    <SelectItem
+                                        v-for="item in nexusFacets.categoryName"
+                                        :key="item.value"
+                                        :value="item.value"
+                                    >
+                                        {{ formatFacetOptionLabel(item) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                    <div>
-                        <div class="text-sm font-medium">Nexus 标签</div>
-                        <Select
-                            v-model="selectedNexusTag"
-                            :disabled="!nexusFacets.tag.length"
-                        >
-                            <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="全部标签" />
-                            </SelectTrigger>
-                            <SelectContent class="max-h-72">
-                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
-                                    全部标签
-                                </SelectItem>
-                                <SelectItem
-                                    v-for="item in nexusFacets.tag"
-                                    :key="item.value"
-                                    :value="item.value"
-                                >
-                                    {{ formatFacetOptionLabel(item) }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                        <div>
+                            <div class="text-sm font-medium">
+                                {{ t("explore.filters.nexusLanguage") }}
+                            </div>
+                            <Select
+                                v-model="selectedNexusLanguage"
+                                :disabled="!nexusFacets.languageName.length"
+                            >
+                                <SelectTrigger class="mt-2 w-full">
+                                    <SelectValue
+                                        :placeholder="
+                                            t('explore.filters.allLanguages')
+                                        "
+                                    />
+                                </SelectTrigger>
+                                <SelectContent class="max-h-72">
+                                    <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                        {{ t("explore.filters.allLanguages") }}
+                                    </SelectItem>
+                                    <SelectItem
+                                        v-for="item in nexusFacets.languageName"
+                                        :key="item.value"
+                                        :value="item.value"
+                                    >
+                                        {{ formatFacetOptionLabel(item) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <div class="text-sm font-medium">
+                                {{ t("explore.filters.nexusTag") }}
+                            </div>
+                            <Select
+                                v-model="selectedNexusTag"
+                                :disabled="!nexusFacets.tag.length"
+                            >
+                                <SelectTrigger class="mt-2 w-full">
+                                    <SelectValue
+                                        :placeholder="
+                                            t('explore.filters.allTags')
+                                        "
+                                    />
+                                </SelectTrigger>
+                                <SelectContent class="max-h-72">
+                                    <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                        {{ t("explore.filters.allTags") }}
+                                    </SelectItem>
+                                    <SelectItem
+                                        v-for="item in nexusFacets.tag"
+                                        :key="item.value"
+                                        :value="item.value"
+                                    >
+                                        {{ formatFacetOptionLabel(item) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </template>
                 </div>
             </div>
         </section>
@@ -1314,7 +1375,7 @@ function escapeHtml(source: string) {
             >
                 <div>
                     <div class="text-sm font-semibold text-destructive">
-                        加载失败
+                        {{ t("explore.common.loadFailed") }}
                     </div>
                     <p class="mt-1 text-sm text-muted-foreground">
                         {{ errorMessage }}
@@ -1322,7 +1383,7 @@ function escapeHtml(source: string) {
                 </div>
                 <Button variant="outline" @click="fetchMods">
                     <IconRefreshCcw />
-                    重试
+                    {{ t("explore.actions.retry") }}
                 </Button>
             </div>
         </section>
@@ -1358,15 +1419,15 @@ function escapeHtml(source: string) {
         >
             <div class="mx-auto max-w-md">
                 <div class="text-base font-semibold">
-                    没有找到符合条件的 Mod
+                    {{ t("explore.empty.title") }}
                 </div>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    可以试着更换关键词，或者清空当前筛选条件后再试。
+                    {{ t("explore.thirdParty.emptyDescription") }}
                 </p>
                 <div class="mt-5 flex justify-center">
                     <Button variant="outline" @click="resetFilters">
                         <IconFilterX />
-                        清空筛选
+                        {{ t("explore.actions.clearFilters") }}
                     </Button>
                 </div>
             </div>
@@ -1380,12 +1441,21 @@ function escapeHtml(source: string) {
                     <div class="text-sm font-medium">
                         {{
                             currentGameName
-                                ? `${currentGameName} 的 ${providerLabel} 列表`
-                                : `${providerLabel} 列表`
+                                ? t("explore.thirdParty.listTitleWithGame", {
+                                      game: currentGameName,
+                                      provider: providerLabel,
+                                  })
+                                : t("explore.thirdParty.listTitle", {
+                                      provider: providerLabel,
+                                  })
                         }}
                     </div>
                     <div class="mt-1 text-xs text-muted-foreground">
-                        共 {{ formatNumber(totalCount) }} 条结果
+                        {{
+                            t("explore.common.totalResults", {
+                                count: formatNumber(totalCount),
+                            })
+                        }}
                     </div>
                 </div>
                 <div
@@ -1397,8 +1467,11 @@ function escapeHtml(source: string) {
                     />
                     <span>{{
                         totalPages > 0
-                            ? `第 ${page} / ${totalPages} 页`
-                            : "暂无分页"
+                            ? t("explore.common.pageProgress", {
+                                  page,
+                                  total: totalPages,
+                              })
+                            : t("explore.common.noPagination")
                     }}</span>
                 </div>
             </section>
@@ -1448,7 +1521,7 @@ function escapeHtml(source: string) {
                                     v-if="item.nsfw"
                                     class="rounded-full border-white/30 bg-rose-500/30 text-white"
                                 >
-                                    成人内容
+                                    {{ t("explore.badges.nsfw") }}
                                 </Badge>
                             </div>
                         </div>
@@ -1479,28 +1552,56 @@ function escapeHtml(source: string) {
                         <div
                             class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
                         >
-                            <span>作者：{{ item.author || "未知" }}</span>
+                            <span>
+                                {{
+                                    t("explore.meta.author", {
+                                        author:
+                                            item.author ||
+                                            t("explore.common.unknown"),
+                                    })
+                                }}
+                            </span>
                             <span>·</span>
-                            <span>更新：{{ formatDate(item.updatedAt) }}</span>
+                            <span>
+                                {{
+                                    t("explore.meta.updated", {
+                                        date: formatDate(item.updatedAt),
+                                    })
+                                }}
+                            </span>
                             <span>·</span>
-                            <span>版本：{{ item.version || "未知" }}</span>
+                            <span>
+                                {{
+                                    t("explore.meta.version", {
+                                        version:
+                                            item.version ||
+                                            t("explore.common.unknown"),
+                                    })
+                                }}
+                            </span>
                         </div>
 
                         <div class="grid grid-cols-3 gap-2 text-center text-xs">
                             <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">下载</div>
+                                <div class="text-muted-foreground">
+                                    {{ t("explore.stats.downloads") }}
+                                </div>
                                 <div class="mt-1 text-sm font-semibold">
                                     {{ formatNumber(item.downloads) }}
                                 </div>
                             </div>
                             <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">点赞</div>
+                                <div class="text-muted-foreground">
+                                    {{ t("explore.stats.likes") }}
+                                </div>
                                 <div class="mt-1 text-sm font-semibold">
                                     {{ formatNumber(item.likes) }}
                                 </div>
                             </div>
                             <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">资源</div>
+                                <div class="text-muted-foreground">
+                                    {{ t("explore.stats.resources") }}
+                                </div>
                                 <div class="mt-1 text-sm font-semibold">
                                     {{ getResourceCountLabel(item) }}
                                 </div>
@@ -1556,7 +1657,7 @@ function escapeHtml(source: string) {
                                 @click="openModDetail(item)"
                             >
                                 <IconExternalLink />
-                                查看详情
+                                {{ t("explore.actions.viewDetail") }}
                             </Button>
 
                             <Button
@@ -1565,7 +1666,7 @@ function escapeHtml(source: string) {
                                 variant="outline"
                                 @click="openModWebsite(item)"
                             >
-                                打开网页
+                                {{ t("explore.actions.openWebsite") }}
                             </Button>
                             <Button
                                 class="w-full"
@@ -1586,8 +1687,13 @@ function escapeHtml(source: string) {
                 class="flex flex-col gap-4 rounded-2xl border px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
             >
                 <div class="text-sm text-muted-foreground">
-                    当前显示第 {{ page }} 页，共 {{ totalPages }} 页，累计
-                    {{ formatNumber(totalCount) }} 条结果。
+                    {{
+                        t("explore.common.currentPageSummary", {
+                            page,
+                            totalPages,
+                            totalCount: formatNumber(totalCount),
+                        })
+                    }}
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
@@ -1598,7 +1704,7 @@ function escapeHtml(source: string) {
                         @click="goToPage(page - 1)"
                     >
                         <IconChevronLeft />
-                        上一页
+                        {{ t("explore.actions.previousPage") }}
                     </Button>
 
                     <template v-for="item in paginationItems" :key="item.key">
@@ -1626,7 +1732,7 @@ function escapeHtml(source: string) {
                         :disabled="page >= totalPages"
                         @click="goToPage(page + 1)"
                     >
-                        下一页
+                        {{ t("explore.actions.nextPage") }}
                         <IconChevronRight />
                     </Button>
                 </div>
@@ -1637,13 +1743,25 @@ function escapeHtml(source: string) {
             <DialogScrollContent class="max-w-5xl">
                 <DialogHeader>
                     <DialogTitle>
-                        {{ selectedMod?.title || `${providerLabel} 详情` }}
+                        {{
+                            selectedMod?.title ||
+                            t("explore.detail.providerDetail", {
+                                provider: providerLabel,
+                            })
+                        }}
                     </DialogTitle>
                     <DialogDescription>
                         {{
                             selectedMod
-                                ? `${providerLabel} · ${selectedMod.author || "未知作者"}`
-                                : `查看 ${providerLabel} Mod 详情`
+                                ? t("explore.detail.providerAuthor", {
+                                      provider: providerLabel,
+                                      author:
+                                          selectedMod.author ||
+                                          t("explore.common.unknownAuthor"),
+                                  })
+                                : t("explore.detail.viewProviderDetail", {
+                                      provider: providerLabel,
+                                  })
                         }}
                     </DialogDescription>
                 </DialogHeader>
@@ -1688,14 +1806,18 @@ function escapeHtml(source: string) {
                                     class="rounded-full"
                                     variant="outline"
                                 >
-                                    版本 · {{ selectedMod.version }}
+                                    {{
+                                        t("explore.detail.versionBadge", {
+                                            version: selectedMod.version,
+                                        })
+                                    }}
                                 </Badge>
                                 <Badge
                                     v-if="selectedMod.nsfw"
                                     class="rounded-full"
                                     variant="destructive"
                                 >
-                                    成人内容
+                                    {{ t("explore.badges.nsfw") }}
                                 </Badge>
                             </div>
 
@@ -1704,15 +1826,18 @@ function escapeHtml(source: string) {
                             >
                                 <div class="rounded-xl bg-muted/45 px-3 py-3">
                                     <div class="text-xs text-muted-foreground">
-                                        作者
+                                        {{ t("explore.stats.author") }}
                                     </div>
                                     <div class="mt-1 text-sm font-medium">
-                                        {{ selectedMod.author || "-" }}
+                                        {{
+                                            selectedMod.author ||
+                                            t("explore.common.emptyDash")
+                                        }}
                                     </div>
                                 </div>
                                 <div class="rounded-xl bg-muted/45 px-3 py-3">
                                     <div class="text-xs text-muted-foreground">
-                                        下载
+                                        {{ t("explore.stats.downloads") }}
                                     </div>
                                     <div class="mt-1 text-sm font-medium">
                                         {{
@@ -1722,7 +1847,7 @@ function escapeHtml(source: string) {
                                 </div>
                                 <div class="rounded-xl bg-muted/45 px-3 py-3">
                                     <div class="text-xs text-muted-foreground">
-                                        点赞
+                                        {{ t("explore.stats.likes") }}
                                     </div>
                                     <div class="mt-1 text-sm font-medium">
                                         {{ formatNumber(selectedMod.likes) }}
@@ -1730,7 +1855,7 @@ function escapeHtml(source: string) {
                                 </div>
                                 <div class="rounded-xl bg-muted/45 px-3 py-3">
                                     <div class="text-xs text-muted-foreground">
-                                        更新时间
+                                        {{ t("explore.stats.updatedAt") }}
                                     </div>
                                     <div class="mt-1 text-sm font-medium">
                                         {{ formatDate(selectedMod.updatedAt) }}
@@ -1739,7 +1864,10 @@ function escapeHtml(source: string) {
                             </div>
 
                             <p class="text-sm leading-7 text-muted-foreground">
-                                {{ selectedMod.summary || "暂无简介" }}
+                                {{
+                                    selectedMod.summary ||
+                                    t("explore.detail.noSummary")
+                                }}
                             </p>
 
                             <div
@@ -1770,7 +1898,7 @@ function escapeHtml(source: string) {
                                     variant="outline"
                                     @click="openModWebsite(selectedMod)"
                                 >
-                                    打开网页
+                                    {{ t("explore.actions.openWebsite") }}
                                 </Button>
                             </div>
                         </div>
@@ -1783,12 +1911,14 @@ function escapeHtml(source: string) {
                     </section>
 
                     <section class="space-y-3">
-                        <div class="text-base font-semibold">文件列表</div>
+                        <div class="text-base font-semibold">
+                            {{ t("explore.detail.fileList") }}
+                        </div>
                         <div
                             v-if="selectedMod.files.length === 0"
                             class="rounded-xl border border-dashed p-6 text-sm text-muted-foreground"
                         >
-                            当前详情没有提供可下载文件。
+                            {{ t("explore.detail.noFiles") }}
                         </div>
                         <div v-else class="space-y-3">
                             <div
@@ -1801,9 +1931,19 @@ function escapeHtml(source: string) {
                                         {{ file.name }}
                                     </div>
                                     <div class="text-sm text-muted-foreground">
-                                        版本：{{ file.version || "未标注" }} ·
-                                        大小：{{ formatBytes(file.size) }} ·
-                                        时间：{{ formatDate(file.createdAt) }}
+                                        {{
+                                            t("explore.detail.fileMeta", {
+                                                version:
+                                                    file.version ||
+                                                    t(
+                                                        "explore.detail.unlabeled",
+                                                    ),
+                                                size: formatBytes(file.size),
+                                                date: formatDate(
+                                                    file.createdAt,
+                                                ),
+                                            })
+                                        }}
                                     </div>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
@@ -1834,7 +1974,7 @@ function escapeHtml(source: string) {
                                             })
                                         "
                                     >
-                                        打开来源
+                                        {{ t("explore.actions.openSource") }}
                                     </Button>
                                 </div>
                             </div>

@@ -66,6 +66,7 @@ export const settingsStartPageOptions = [
     { labelKey: "settings.pages.mcp", value: "/mcp" },
     { labelKey: "settings.pages.backup", value: "/backup" },
     { labelKey: "settings.pages.about", value: "/about" },
+    { labelKey: "settings.pages.aiChat", value: "/ai-chat" },
     { labelKey: "settings.pages.settings", value: "/settings" },
 ] as const;
 
@@ -129,6 +130,12 @@ export const useSettings = defineStore("Settings", () => {
         "nexusModsUser",
         null,
     );
+
+    const baseUrl = PersistentStore.useValue<string>("agentbaseUrl", "");
+    const apiKey = PersistentStore.useValue<string>("agentApiKey", "");
+
+    const glossModKey = PersistentStore.useValue<string>("glossModKey", "");
+
     const debugInfo = ref<unknown>({});
     const nexusModsLoginLoading = ref(false);
 
@@ -326,6 +333,9 @@ export const useSettings = defineStore("Settings", () => {
         nexusModsLoginLoading,
         debugInfo,
         settingsStartPageOptions,
+        baseUrl,
+        apiKey,
+        glossModKey,
         selectStoragePath,
         loginNexusModsUser,
         clearNexusModsAuthorization,

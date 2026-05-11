@@ -10,6 +10,7 @@ import {
     Bot,
     Archive,
     Info,
+    MessageCircleMore,
 } from "lucide-vue-next";
 import { cn } from "@/lib/utils";
 
@@ -23,12 +24,12 @@ const navItems = [
     { labelKey: "nav.download", path: "/download", icon: ArrowDownToLine },
     { labelKey: "nav.mcp", path: "/mcp", icon: Bot },
     { labelKey: "nav.backup", path: "/backup", icon: Archive },
+    { labelKey: "nav.aiChat", path: "/ai-chat", icon: MessageCircleMore },
     { labelKey: "nav.about", path: "/about", icon: Info },
 ];
 
 const bottomItems = [
     { labelKey: "nav.settings", path: "/settings", icon: Settings },
-    // { name: "用户", path: "/user", icon: CircleUser },
 ];
 </script>
 
@@ -63,19 +64,6 @@ const bottomItems = [
         </div>
 
         <div class="p-3 border-t border-border/50">
-            <a
-                href="https://github.com/glosc-ai/Glosc-Copilot/releases"
-                target="_blank"
-                :class="
-                    cn(
-                        'group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors relative',
-                        'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-                    )
-                "
-            >
-                <icon-message-circle-more class="h-5 w-5" />
-                <span class="hidden md:inline-block">{{ $t("nav.aiChat") }}</span>
-            </a>
             <router-link
                 v-for="item in bottomItems"
                 :key="item.path"

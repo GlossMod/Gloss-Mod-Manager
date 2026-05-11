@@ -27,6 +27,9 @@ const {
     showPreloadList,
     storagePath,
     theme,
+    baseUrl,
+    apiKey,
+    glossModKey,
 } = storeToRefs(settings);
 
 const themeModel = computed<ThemeMode>({
@@ -143,7 +146,9 @@ watch(
                                         <Label
                                             for="storage-path"
                                             class="text-sm font-medium"
-                                            >{{ t("settings.storagePath") }}</Label
+                                            >{{
+                                                t("settings.storagePath")
+                                            }}</Label
                                         >
                                     </InputGroupAddon>
                                     <InputGroupAddon align="inline-end">
@@ -165,21 +170,21 @@ watch(
                                 <Select id="theme-model" v-model="themeModel">
                                     <SelectTrigger>
                                         <SelectValue
-                                            :placeholder="t('settings.chooseTheme')"
+                                            :placeholder="
+                                                t('settings.chooseTheme')
+                                            "
                                         />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="system"
-                                            >{{
-                                                t("settings.themeSystem")
-                                            }}</SelectItem
-                                        >
+                                        <SelectItem value="system">{{
+                                            t("settings.themeSystem")
+                                        }}</SelectItem>
                                         <SelectItem value="light">
                                             {{ t("settings.themeLight") }}
                                         </SelectItem>
-                                        <SelectItem value="dark"
-                                            >{{ t("settings.themeDark") }}</SelectItem
-                                        >
+                                        <SelectItem value="dark">{{
+                                            t("settings.themeDark")
+                                        }}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -244,18 +249,18 @@ watch(
                         </div>
                         <div class="grid grid-cols-4 items-center gap-8">
                             <div class="flex gap-2 items-center">
-                                <Label for="auto-add-after-download"
-                                    >{{ t("settings.autoAddAfterDownload") }}</Label
-                                >
+                                <Label for="auto-add-after-download">{{
+                                    t("settings.autoAddAfterDownload")
+                                }}</Label>
                                 <Switch
                                     id="auto-add-after-download"
                                     v-model="autoAddAfterDownload"
                                 />
                             </div>
                             <div class="flex gap-2 items-center">
-                                <Label for="select-game-by-folder"
-                                    >{{ t("settings.selectGameByFolder") }}</Label
-                                >
+                                <Label for="select-game-by-folder">{{
+                                    t("settings.selectGameByFolder")
+                                }}</Label>
                                 <Switch
                                     id="select-game-by-folder"
                                     v-model="selectGameByFolder"
@@ -272,27 +277,27 @@ watch(
                                 />
                             </div>
                             <div class="flex gap-2 items-center">
-                                <Label for="modifiable-during-game"
-                                    >{{ t("settings.modifiableDuringGame") }}</Label
-                                >
+                                <Label for="modifiable-during-game">{{
+                                    t("settings.modifiableDuringGame")
+                                }}</Label>
                                 <Switch
                                     id="modifiable-during-game"
                                     v-model="modifiableDuringGame"
                                 />
                             </div>
                             <div class="flex gap-2 items-center">
-                                <Label for="show-preload-list"
-                                    >{{ t("settings.showPreloadList") }}</Label
-                                >
+                                <Label for="show-preload-list">{{
+                                    t("settings.showPreloadList")
+                                }}</Label>
                                 <Switch
                                     id="show-preload-list"
                                     v-model="showPreloadList"
                                 />
                             </div>
                             <div class="flex gap-2 items-center">
-                                <Label for="disable-symlink-install"
-                                    >{{ t("settings.closeSoftLinks") }}</Label
-                                >
+                                <Label for="disable-symlink-install">{{
+                                    t("settings.closeSoftLinks")
+                                }}</Label>
                                 <Switch
                                     id="disable-symlink-install"
                                     v-model="closeSoftLinks"
@@ -345,13 +350,10 @@ watch(
                                         class="text-sm text-muted-foreground"
                                     >
                                         {{
-                                            t(
-                                                "settings.nexus.currentAccount",
-                                                {
-                                                    name: nexusModsUser.name,
-                                                    id: nexusModsUser.user_id,
-                                                },
-                                            )
+                                            t("settings.nexus.currentAccount", {
+                                                name: nexusModsUser.name,
+                                                id: nexusModsUser.user_id,
+                                            })
                                         }}
                                     </p>
                                     <p
@@ -391,9 +393,69 @@ watch(
                                         variant="outline"
                                         @click="handleNexusModsLogout"
                                     >
-                                        {{ t("settings.nexus.clearAuthorization") }}
+                                        {{
+                                            t(
+                                                "settings.nexus.clearAuthorization",
+                                            )
+                                        }}
                                     </Button>
                                 </div>
+                            </div>
+                        </div>
+                        <div
+                            class="rounded-xl border border-border/70 bg-muted/40 p-4"
+                        >
+                            <div class="flex flex-wrap gap-2 items-center">
+                                <div class="flex items-center">
+                                    <span class="text-sm font-medium">
+                                        3DM Mods
+                                    </span>
+                                </div>
+                                <InputGroup claww="w-full">
+                                    <InputGroupInput
+                                        type="password"
+                                        placeholder="输入你的3DM Mods Key"
+                                        v-model="glossModKey"
+                                    />
+                                    <InputGroupAddon>
+                                        <icon-key-square />
+                                    </InputGroupAddon>
+                                </InputGroup>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            <h3>AI配置</h3>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-4">
+                        <div class="grid grid-cols-3 items-center gap-4">
+                            <div class="flex items-center">
+                                <InputGroup>
+                                    <InputGroupInput
+                                        type="text"
+                                        placeholder="Bass Url"
+                                        v-model="baseUrl"
+                                    />
+                                    <InputGroupAddon>
+                                        <icon-link />
+                                    </InputGroupAddon>
+                                </InputGroup>
+                            </div>
+                            <div class="flex items-center">
+                                <InputGroup>
+                                    <InputGroupInput
+                                        type="password"
+                                        placeholder="API Key"
+                                        v-model="apiKey"
+                                    />
+                                    <InputGroupAddon>
+                                        <icon-key-square />
+                                    </InputGroupAddon>
+                                </InputGroup>
                             </div>
                         </div>
                     </CardContent>

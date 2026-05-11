@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { fetch as httpFetch } from "@tauri-apps/plugin-http";
 import { ElMessage } from "element-plus-message";
+import { useI18n } from "vue-i18n";
 import { Aria2Rpc, type IAria2RpcTask } from "@/lib/aria2-rpc";
 import {
     findGlossDuplicateTasks,
@@ -45,33 +46,6 @@ const EMPTY_POSTER =
 			<text x="48" y="254" fill="#ffe0a3" font-size="22" font-family="Arial, sans-serif">暂无可用封面</text>
 		</svg>
 	`);
-const numberFormatter = new Intl.NumberFormat("zh-CN");
-const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-});
-const originalFilterOptions = [
-    { label: "全部来源", value: "all" },
-    { label: "原创", value: "1" },
-    { label: "二创", value: "2" },
-    { label: "翻译", value: "3" },
-    { label: "精华", value: "4" },
-];
-const timeFilterOptions = [
-    { label: "全部时间", value: "all" },
-    { label: "今天", value: "1" },
-    { label: "最近一周", value: "2" },
-    { label: "最近一月", value: "3" },
-    { label: "最近三月", value: "4" },
-];
-const originalLabelMap: Record<string, string> = {
-    "1": "原创",
-    "2": "二创",
-    "3": "翻译",
-    "4": "精华",
-};
-
 interface IGlossModListData {
     data: IGlossExploreMod[];
     count: number;
@@ -113,9 +87,36 @@ interface IGlossTypeOption {
 
 const manager = useManager();
 const router = useRouter();
+const { t, locale } = useI18n();
 const taskMetaMap = PersistentStore.useValue<
     Record<string, IGlossDownloadTaskMeta>
 >("aria2TaskMetaMap", {});
+
+const numberFormatter = computed(
+    () => new Intl.NumberFormat(locale.value.replace(/_/gu, "-")),
+);
+const dateFormatter = computed(
+    () =>
+        new Intl.DateTimeFormat(locale.value.replace(/_/gu, "-"), {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+        }),
+);
+const originalFilterOptions = computed(() => [
+    { label: t("explore.filters.allSources"), value: "all" },
+    { label: t("explore.gloss.original.original"), value: "1" },
+    { label: t("explore.gloss.original.secondary"), value: "2" },
+    { label: t("explore.gloss.original.translation"), value: "3" },
+    { label: t("explore.gloss.original.featured"), value: "4" },
+]);
+const timeFilterOptions = computed(() => [
+    { label: t("explore.filters.allTime"), value: "all" },
+    { label: t("explore.filters.today"), value: "1" },
+    { label: t("explore.filters.lastWeek"), value: "2" },
+    { label: t("explore.filters.lastMonth"), value: "3" },
+    { label: t("explore.filters.lastThreeMonths"), value: "4" },
+]);
 
 const mods = ref<IGlossExploreMod[]>([]);
 const loading = ref(false);
@@ -129,6 +130,7 @@ const totalCount = ref(0);
 const totalPages = ref(0);
 const page = ref(1);
 const pageSize = ref(DEFAULT_PAGE_SIZE);
+const isFiltersExpanded = ref(false);
 const searchKeyword = ref("");
 const tagKeyword = ref("");
 const selectedOriginal = ref("all");
@@ -167,25 +169,29 @@ const currentTypeOptions = computed<IGlossTypeOption[]>(() => {
 
     return gameTypes
         .map((item) => ({
-            label: item.mods_type_name?.trim() || `类型 ${item.id}`,
+            label:
+                item.mods_type_name?.trim() ||
+                t("explore.gloss.typeFallback", { id: item.id }),
             value: String(item.id),
         }))
         .filter((item) => Boolean(item.label && item.value));
 });
 const currentTypePlaceholder = computed(() => {
     if (!followCurrentGame.value || !currentGameId.value) {
-        return "当前未限定游戏";
+        return t("explore.filters.noGameLimited");
     }
 
     if (glossGameTypeLoading.value) {
-        return "正在加载类型";
+        return t("explore.filters.loadingTypes");
     }
 
     if (glossGameTypeError.value) {
-        return "类型加载失败";
+        return t("explore.filters.typeLoadFailed");
     }
 
-    return currentTypeOptions.value.length ? "全部类型" : "当前游戏暂无类型";
+    return currentTypeOptions.value.length
+        ? t("explore.filters.allTypes")
+        : t("explore.filters.noTypesForCurrentGame");
 });
 const parsedTags = computed(() =>
     tagKeyword.value
@@ -258,19 +264,19 @@ const paginationItems = computed<IPageItem[]>(() => {
 });
 const summaryCards = computed(() => [
     {
-        label: "结果总数",
+        label: t("explore.summary.totalResults"),
         value: formatNumber(totalCount.value),
     },
     {
-        label: "当前页",
+        label: t("explore.summary.currentPage"),
         value: String(totalPages.value > 0 ? page.value : 0),
     },
     {
-        label: "总页数",
+        label: t("explore.summary.totalPages"),
         value: String(totalPages.value),
     },
     {
-        label: "标签条件",
+        label: t("explore.summary.tagConditions"),
         value: String(parsedTags.value.length),
     },
 ]);
@@ -430,7 +436,7 @@ function buildGlossGameModTypeMap(gameModTypes: IGlossGameModType[]) {
 async function fetchGlossGameModTypes() {
     if (!GLOSS_MOD_KEY) {
         glossGameModTypeMap.value = {};
-        glossGameTypeError.value = "未读取到 GLOSS_MOD_KEY，请检查 .env 配置。";
+        glossGameTypeError.value = t("explore.gloss.envMissing");
         return;
     }
 
@@ -462,7 +468,9 @@ async function fetchGlossGameModTypes() {
 
         glossGameModTypeMap.value = {};
         glossGameTypeError.value =
-            error instanceof Error ? error.message : "加载 Gloss 游戏类型失败";
+            error instanceof Error
+                ? error.message
+                : t("explore.gloss.fetchTypesFailed");
         console.error("加载 Gloss 游戏类型失败");
         console.error(error);
     } finally {
@@ -477,7 +485,7 @@ async function fetchMods() {
         mods.value = [];
         totalCount.value = 0;
         totalPages.value = 0;
-        errorMessage.value = "未读取到 GLOSS_MOD_KEY，请检查 .env 配置。";
+        errorMessage.value = t("explore.gloss.envMissing");
         return;
     }
 
@@ -502,11 +510,11 @@ async function fetchMods() {
         }
 
         if (!response.ok || !payload.success || !payload.data) {
-            const message = payload.msg || "获取 Gloss Mods 失败";
+            const message = payload.msg || t("explore.gloss.fetchFailed");
 
             throw new Error(
                 message.includes("无权访问")
-                    ? "接口鉴权失败，请检查 .env 中的 GLOSS_MOD_KEY。"
+                    ? t("explore.gloss.authFailed")
                     : message,
             );
         }
@@ -530,7 +538,9 @@ async function fetchMods() {
         totalCount.value = 0;
         totalPages.value = 0;
         errorMessage.value =
-            error instanceof Error ? error.message : "获取 Gloss Mods 失败";
+            error instanceof Error
+                ? error.message
+                : t("explore.gloss.fetchFailed");
     } finally {
         if (currentRequestSequence === requestSequence) {
             loading.value = false;
@@ -539,7 +549,7 @@ async function fetchMods() {
 }
 
 function formatNumber(value: number) {
-    return numberFormatter.format(value);
+    return numberFormatter.value.format(value);
 }
 
 function toNumber(value?: string | number) {
@@ -550,7 +560,7 @@ function toNumber(value?: string | number) {
 
 function formatDate(value?: string) {
     if (!value) {
-        return "未知时间";
+        return t("explore.common.unknownTime");
     }
 
     const parsed = new Date(value);
@@ -559,7 +569,7 @@ function formatDate(value?: string) {
         return value;
     }
 
-    return dateFormatter.format(parsed);
+    return dateFormatter.value.format(parsed);
 }
 
 function resolveAssetUrl(path?: string) {
@@ -600,7 +610,14 @@ function handleCoverError(event: Event) {
 }
 
 function getOriginalLabel(value: number) {
-    return originalLabelMap[String(value)] ?? "其它";
+    const labelMap: Record<string, string> = {
+        "1": t("explore.gloss.original.original"),
+        "2": t("explore.gloss.original.secondary"),
+        "3": t("explore.gloss.original.translation"),
+        "4": t("explore.gloss.original.featured"),
+    };
+
+    return labelMap[String(value)] ?? t("explore.gloss.original.other");
 }
 
 function getLatestResource(item: IGlossExploreMod) {
@@ -672,7 +689,7 @@ function resolveDownloadStatus(item: IGlossExploreMod): IExploreDownloadStatus {
     if (!latestResource?.mods_resource_url) {
         return {
             state: "missing",
-            label: "暂无资源",
+            label: t("explore.status.noResource"),
             progress: 0,
         };
     }
@@ -680,7 +697,7 @@ function resolveDownloadStatus(item: IGlossExploreMod): IExploreDownloadStatus {
     if (isGlossCloudDriveResource(latestResource)) {
         return {
             state: "cloud",
-            label: "打开网盘",
+            label: t("explore.actions.openCloudDrive"),
             progress: 0,
         };
     }
@@ -690,7 +707,7 @@ function resolveDownloadStatus(item: IGlossExploreMod): IExploreDownloadStatus {
     if (!criteria) {
         return {
             state: "none",
-            label: "加入下载",
+            label: t("explore.status.addDownload"),
             progress: 0,
         };
     }
@@ -706,43 +723,43 @@ function resolveDownloadStatus(item: IGlossExploreMod): IExploreDownloadStatus {
         case "active":
             return {
                 state: "active",
-                label: "下载中",
+                label: t("explore.status.downloading"),
                 progress: getTaskProgress(task),
             };
         case "waiting":
             return {
                 state: "waiting",
-                label: "等待中",
+                label: t("explore.status.waiting"),
                 progress: getTaskProgress(task),
             };
         case "paused":
             return {
                 state: "paused",
-                label: "已暂停",
+                label: t("explore.status.paused"),
                 progress: getTaskProgress(task),
             };
         case "error":
             return {
                 state: "error",
-                label: "下载失败",
+                label: t("explore.status.failed"),
                 progress: 0,
             };
         case "complete":
             return {
                 state: "complete",
-                label: "重新下载",
+                label: t("explore.status.redownload"),
                 progress: 100,
             };
         case "imported":
             return {
                 state: "imported",
-                label: "已添加",
+                label: t("explore.status.imported"),
                 progress: 100,
             };
         default:
             return {
                 state: "none",
-                label: "加入下载",
+                label: t("explore.status.addDownload"),
                 progress: 0,
             };
     }
@@ -752,7 +769,7 @@ function getDownloadStatus(item: IGlossExploreMod) {
     return (
         downloadStatusMap.value[String(item.id)] ?? {
             state: "none",
-            label: "加入下载",
+            label: t("explore.status.addDownload"),
             progress: 0,
         }
     );
@@ -760,11 +777,11 @@ function getDownloadStatus(item: IGlossExploreMod) {
 
 function getDownloadButtonLabel(item: IGlossExploreMod) {
     if (queueingModId.value === String(item.id)) {
-        return "加入中...";
+        return t("explore.status.adding");
     }
 
     if (hasGlossMultipleResources(item)) {
-        return "选择资源下载";
+        return t("explore.actions.selectResourceDownload");
     }
 
     return getDownloadStatus(item).label;
@@ -900,7 +917,7 @@ async function openModDetail(item: IGlossExploreMod) {
         });
     } catch (error) {
         console.error(error);
-        ElMessage.error("打开 Mod 详情页失败。");
+        ElMessage.error(t("explore.gloss.openDetailFailed"));
     }
 }
 
@@ -908,7 +925,7 @@ async function openLatestResource(item: IGlossExploreMod) {
     const latestResource = getLatestResource(item);
 
     if (!latestResource?.mods_resource_url) {
-        ElMessage.warning("当前 Mod 没有可用资源。");
+        ElMessage.warning(t("explore.messages.noAvailableResourceForMod"));
         return;
     }
 
@@ -922,7 +939,7 @@ async function openLatestResource(item: IGlossExploreMod) {
         });
 
         if (!result) {
-            ElMessage.info("已取消选择下载资源。");
+            ElMessage.info(t("explore.messages.downloadResourceCanceled"));
             return;
         }
 
@@ -945,7 +962,9 @@ async function openLatestResource(item: IGlossExploreMod) {
     } catch (error) {
         console.error(error);
         ElMessage.error(
-            error instanceof Error ? error.message : "提交下载任务失败。",
+            error instanceof Error
+                ? error.message
+                : t("explore.messages.submitDownloadFailed"),
         );
     } finally {
         if (queueingModId.value === queueKey) {
@@ -980,24 +999,28 @@ function goToPage(targetPage: number) {
                             class="rounded-full"
                             variant="outline"
                         >
-                            当前游戏 · {{ currentGameName }}
+                            {{
+                                t("explore.common.currentGame", {
+                                    game: currentGameName,
+                                })
+                            }}
                         </Badge>
                         <Badge v-else class="rounded-full" variant="outline">
-                            未选择本地游戏，当前显示全站结果
+                            {{ t("explore.gloss.noLocalGameAllResults") }}
                         </Badge>
                         <Badge
                             v-if="onlySupportGmm"
                             class="rounded-full"
                             variant="outline"
                         >
-                            仅 GMM
+                            {{ t("explore.gloss.onlySupportGmm") }}
                         </Badge>
                         <Badge
                             v-if="onlyLocal"
                             class="rounded-full"
                             variant="outline"
                         >
-                            仅本地资源
+                            {{ t("explore.gloss.onlyLocal") }}
                         </Badge>
                     </div>
                     <div>
@@ -1011,19 +1034,24 @@ function goToPage(targetPage: number) {
                         <span>
                             {{
                                 totalPages > 0
-                                    ? `第 ${page} / ${totalPages} 页`
-                                    : "暂无分页结果"
+                                    ? t("explore.common.pageProgress", {
+                                          page,
+                                          total: totalPages,
+                                      })
+                                    : t("explore.common.noPaginationResult")
                             }}
                         </span>
                         <span>·</span>
                         <span>
                             {{
                                 hasActiveFilters
-                                    ? "已启用筛选"
-                                    : "当前未启用额外筛选"
+                                    ? t("explore.common.filtersActive")
+                                    : t("explore.common.filtersInactive")
                             }}
                         </span>
-                        <span v-if="loading">· 正在更新结果</span>
+                        <span v-if="loading">
+                            · {{ t("explore.common.updating") }}
+                        </span>
                     </div>
                 </div>
 
@@ -1048,58 +1076,64 @@ function goToPage(targetPage: number) {
             <div
                 class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
             >
-                <div class="flex flex-wrap items-center gap-2">
-                    <Badge class="rounded-full" variant="outline">
-                        筛选条件
-                    </Badge>
-                    <Badge
-                        v-if="currentGameName"
-                        class="rounded-full"
-                        variant="outline"
-                    >
-                        当前游戏：{{ currentGameName }}
-                    </Badge>
-                    <span v-else class="text-xs text-muted-foreground">
-                        当前未限定游戏范围
-                    </span>
-                </div>
-                <Button size="sm" variant="outline" @click="resetFilters">
-                    <IconFilterX />
-                    重置筛选
-                </Button>
-            </div>
-
-            <div class="space-y-3">
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <div class="xl:col-span-2">
-                        <div class="text-sm font-medium">搜索 Mod</div>
-                        <div class="relative mt-2">
-                            <Input
-                                v-model="searchKeyword"
-                                class="pr-10"
-                                placeholder="按标题搜索，例如：材质、武器、整合包"
-                            />
-                            <IconSearch
-                                class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <div class="text-sm font-medium">标签筛选</div>
+                <div class="flex-1 flex gap-3 lg:max-w-2xl">
+                    <div class="relative w-full">
                         <Input
-                            v-model="tagKeyword"
-                            class="mt-2"
-                            placeholder="多个标签可用空格或逗号分隔"
+                            v-model="searchKeyword"
+                            class="pr-10"
+                            :placeholder="t('explore.gloss.searchPlaceholder')"
+                            @keydown.enter="fetchMods"
+                        />
+                        <IconSearch
+                            class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
                         />
                     </div>
                 </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        @click="isFiltersExpanded = !isFiltersExpanded"
+                    >
+                        <IconListFilter />
+                        {{
+                            isFiltersExpanded
+                                ? t("explore.actions.collapseFilters")
+                                : t("explore.actions.expandFilters")
+                        }}
+                    </Button>
+                    <Button size="sm" variant="outline" @click="resetFilters">
+                        <IconFilterX />
+                        {{ t("explore.actions.resetSearch") }}
+                    </Button>
+                </div>
+            </div>
 
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+            <div v-show="isFiltersExpanded" class="space-y-3 pt-3 border-t">
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                     <div>
-                        <div class="text-sm font-medium">来源类型</div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.tag") }}
+                        </div>
+                        <Input
+                            v-model="tagKeyword"
+                            class="mt-2"
+                            :placeholder="t('explore.filters.tagPlaceholder')"
+                            @keydown.enter="fetchMods"
+                        />
+                    </div>
+
+                    <div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.sourceType") }}
+                        </div>
                         <Select v-model="selectedOriginal">
                             <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="全部来源" />
+                                <SelectValue
+                                    :placeholder="
+                                        t('explore.filters.allSources')
+                                    "
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -1114,10 +1148,14 @@ function goToPage(targetPage: number) {
                     </div>
 
                     <div>
-                        <div class="text-sm font-medium">发布时间</div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.publishTime") }}
+                        </div>
                         <Select v-model="selectedTime">
                             <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="全部时间" />
+                                <SelectValue
+                                    :placeholder="t('explore.filters.allTime')"
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -1132,7 +1170,9 @@ function goToPage(targetPage: number) {
                     </div>
 
                     <div>
-                        <div class="text-sm font-medium">游戏类型</div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.gameType") }}
+                        </div>
                         <Select
                             v-model="selectedType"
                             :disabled="!currentTypeOptions.length"
@@ -1143,7 +1183,9 @@ function goToPage(targetPage: number) {
                                 />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">全部类型</SelectItem>
+                                <SelectItem value="all">
+                                    {{ t("explore.filters.allTypes") }}
+                                </SelectItem>
                                 <SelectItem
                                     v-for="item in currentTypeOptions"
                                     :key="item.value"
@@ -1156,10 +1198,16 @@ function goToPage(targetPage: number) {
                     </div>
 
                     <div>
-                        <div class="text-sm font-medium">每页数量</div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.pageSize") }}
+                        </div>
                         <Select v-model="pageSize">
                             <SelectTrigger class="mt-2 w-full">
-                                <SelectValue placeholder="选择每页数量" />
+                                <SelectValue
+                                    :placeholder="
+                                        t('explore.filters.choosePageSize')
+                                    "
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -1167,24 +1215,31 @@ function goToPage(targetPage: number) {
                                     :key="item"
                                     :value="item"
                                 >
-                                    每页 {{ item }} 条
+                                    {{
+                                        t("explore.filters.perPageOption", {
+                                            count: item,
+                                        })
+                                    }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
+                </div>
 
-                    <div
-                        class="flex items-center justify-between rounded-lg border px-3 py-2.5 xl:col-span-1"
-                    >
-                        <div class="text-sm font-medium">仅支持 GMM</div>
-                        <Switch v-model="onlySupportGmm" />
+                <div class="flex flex-wrap gap-4 pt-2">
+                    <div class="flex items-center gap-2">
+                        <Switch id="onlySupportGmm" v-model="onlySupportGmm" />
+                        <label
+                            for="onlySupportGmm"
+                            class="text-sm font-medium"
+                            >{{ t("explore.gloss.onlySupportGmm") }}</label
+                        >
                     </div>
-
-                    <div
-                        class="flex items-center justify-between rounded-lg border px-3 py-2.5 xl:col-span-1"
-                    >
-                        <div class="text-sm font-medium">仅本地资源</div>
-                        <Switch v-model="onlyLocal" />
+                    <div class="flex items-center gap-2">
+                        <Switch id="onlyLocal" v-model="onlyLocal" />
+                        <label for="onlyLocal" class="text-sm font-medium">{{
+                            t("explore.gloss.onlyLocal")
+                        }}</label>
                     </div>
                 </div>
             </div>
@@ -1199,7 +1254,7 @@ function goToPage(targetPage: number) {
             >
                 <div>
                     <div class="text-sm font-semibold text-destructive">
-                        加载失败
+                        {{ t("explore.common.loadFailed") }}
                     </div>
                     <p class="mt-1 text-sm text-muted-foreground">
                         {{ errorMessage }}
@@ -1207,7 +1262,7 @@ function goToPage(targetPage: number) {
                 </div>
                 <Button variant="outline" @click="fetchMods">
                     <IconRefreshCcw />
-                    重试
+                    {{ t("explore.actions.retry") }}
                 </Button>
             </div>
         </section>
@@ -1243,16 +1298,15 @@ function goToPage(targetPage: number) {
         >
             <div class="mx-auto max-w-md">
                 <div class="text-base font-semibold">
-                    没有找到符合条件的 Mod
+                    {{ t("explore.empty.title") }}
                 </div>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    可以试着清空标签、放宽时间范围，或者关闭“仅支持 GMM /
-                    仅本地资源”开关后再试。
+                    {{ t("explore.gloss.emptyDescription") }}
                 </p>
                 <div class="mt-5 flex justify-center">
                     <Button variant="outline" @click="resetFilters">
                         <IconFilterX />
-                        清空筛选
+                        {{ t("explore.actions.clearFilters") }}
                     </Button>
                 </div>
             </div>
@@ -1266,12 +1320,18 @@ function goToPage(targetPage: number) {
                     <div class="text-sm font-medium">
                         {{
                             currentGameId
-                                ? `${currentGameName} 的 Mod 列表`
-                                : "全部 Gloss Mods"
+                                ? t("explore.gloss.listTitleWithGame", {
+                                      game: currentGameName,
+                                  })
+                                : t("explore.gloss.allListTitle")
                         }}
                     </div>
                     <div class="mt-1 text-xs text-muted-foreground">
-                        共 {{ formatNumber(totalCount) }} 条结果
+                        {{
+                            t("explore.common.totalResults", {
+                                count: formatNumber(totalCount),
+                            })
+                        }}
                     </div>
                 </div>
                 <div
@@ -1283,8 +1343,11 @@ function goToPage(targetPage: number) {
                     />
                     <span>{{
                         totalPages > 0
-                            ? `第 ${page} / ${totalPages} 页`
-                            : "暂无分页"
+                            ? t("explore.common.pageProgress", {
+                                  page,
+                                  total: totalPages,
+                              })
+                            : t("explore.common.noPagination")
                     }}</span>
                 </div>
             </section>
@@ -1328,13 +1391,13 @@ function goToPage(targetPage: number) {
                                     v-if="item.support_gmm"
                                     class="rounded-full border-white/30 bg-emerald-500/30 text-white"
                                 >
-                                    支持 GMM
+                                    {{ t("explore.gloss.supportGmm") }}
                                 </Badge>
                                 <Badge
                                     v-if="isCloudDriveMod(item)"
                                     class="rounded-full border-white/30 bg-sky-500/30 text-white"
                                 >
-                                    网盘
+                                    {{ t("explore.gloss.cloudDrive") }}
                                 </Badge>
                             </div>
                         </div>
@@ -1365,45 +1428,55 @@ function goToPage(targetPage: number) {
                         <div
                             class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
                         >
-                            <span
-                                >作者：{{
-                                    item.user_nickName ||
-                                    item.mods_author ||
-                                    "未知"
-                                }}</span
-                            >
+                            <span>{{
+                                t("explore.meta.author", {
+                                    author:
+                                        item.user_nickName ||
+                                        item.mods_author ||
+                                        t("explore.common.unknown"),
+                                })
+                            }}</span>
                             <span>·</span>
-                            <span
-                                >更新：{{
-                                    formatDate(item.mods_updateTime)
-                                }}</span
-                            >
+                            <span>{{
+                                t("explore.meta.updated", {
+                                    date: formatDate(item.mods_updateTime),
+                                })
+                            }}</span>
                             <span>·</span>
                             <span>
-                                版本：{{
-                                    item.mods_version ||
-                                    getLatestResource(item)
-                                        ?.mods_resource_version ||
-                                    "未知"
+                                {{
+                                    t("explore.meta.version", {
+                                        version:
+                                            item.mods_version ||
+                                            getLatestResource(item)
+                                                ?.mods_resource_version ||
+                                            t("explore.common.unknown"),
+                                    })
                                 }}
                             </span>
                         </div>
 
                         <div class="grid grid-cols-3 gap-2 text-center text-xs">
                             <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">下载</div>
+                                <div class="text-muted-foreground">
+                                    {{ t("explore.stats.downloads") }}
+                                </div>
                                 <div class="mt-1 text-sm font-semibold">
                                     {{ formatNumber(item.mods_download_cnt) }}
                                 </div>
                             </div>
                             <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">浏览</div>
+                                <div class="text-muted-foreground">
+                                    {{ t("explore.stats.views") }}
+                                </div>
                                 <div class="mt-1 text-sm font-semibold">
                                     {{ formatNumber(item.mods_click_cnt) }}
                                 </div>
                             </div>
                             <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">收藏</div>
+                                <div class="text-muted-foreground">
+                                    {{ t("explore.stats.favorites") }}
+                                </div>
                                 <div class="mt-1 text-sm font-semibold">
                                     {{ formatNumber(item.mods_mark_cnt) }}
                                 </div>
@@ -1417,19 +1490,25 @@ function goToPage(targetPage: number) {
                                 class="flex items-center justify-between gap-3"
                             >
                                 <span>
-                                    {{ item.mods_resource.length }} 个资源
+                                    {{
+                                        t("explore.resources.count", {
+                                            count: item.mods_resource.length,
+                                        })
+                                    }}
                                 </span>
                                 <span>
                                     {{
                                         getLatestResource(item)
-                                            ?.mods_resource_size || "大小未知"
+                                            ?.mods_resource_size ||
+                                        t("explore.common.unknownSize")
                                     }}
                                 </span>
                             </div>
                             <div class="mt-2 line-clamp-1">
                                 {{
                                     getLatestResource(item)
-                                        ?.mods_resource_name || "暂无资源名称"
+                                        ?.mods_resource_name ||
+                                    t("explore.resources.noResourceName")
                                 }}
                             </div>
                         </div>
@@ -1483,7 +1562,7 @@ function goToPage(targetPage: number) {
                                 @click="openModDetail(item)"
                             >
                                 <IconExternalLink />
-                                查看详情
+                                {{ t("explore.actions.viewDetail") }}
                             </Button>
                         </div>
                     </div>
@@ -1494,8 +1573,13 @@ function goToPage(targetPage: number) {
                 class="flex flex-col gap-4 rounded-2xl border px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
             >
                 <div class="text-sm text-muted-foreground">
-                    当前显示第 {{ page }} 页，共 {{ totalPages }} 页，累计
-                    {{ formatNumber(totalCount) }} 条结果。
+                    {{
+                        t("explore.common.currentPageSummary", {
+                            page,
+                            totalPages,
+                            totalCount: formatNumber(totalCount),
+                        })
+                    }}
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
@@ -1506,7 +1590,7 @@ function goToPage(targetPage: number) {
                         @click="goToPage(page - 1)"
                     >
                         <IconChevronLeft />
-                        上一页
+                        {{ t("explore.actions.previousPage") }}
                     </Button>
 
                     <template v-for="item in paginationItems" :key="item.key">
@@ -1534,7 +1618,7 @@ function goToPage(targetPage: number) {
                         :disabled="page >= totalPages"
                         @click="goToPage(page + 1)"
                     >
-                        下一页
+                        {{ t("explore.actions.nextPage") }}
                         <IconChevronRight />
                     </Button>
                 </div>

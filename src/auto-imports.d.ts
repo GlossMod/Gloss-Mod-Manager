@@ -7,10 +7,12 @@
 export {}
 declare global {
   const ARCHIVE_EXTENSIONS: typeof import('./lib/local-mod-import').ARCHIVE_EXTENSIONS
+  const AiChat: typeof import('./lib/AiChat').AiChat
   const AppAnalytics: typeof import('./lib/Analytics').AppAnalytics
   const Aria2: typeof import('./lib/aria2').Aria2
   const Aria2Rpc: typeof import('./lib/aria2-rpc').Aria2Rpc
   const AutoStart: typeof import('./lib/auto-start').AutoStart
+  const DEFAULT_AI_CHAT_SYSTEM_PROMPT: typeof import('./lib/AiChat').DEFAULT_AI_CHAT_SYSTEM_PROMPT
   const DotNetTool: typeof import('./lib/dotnet-tool').DotNetTool
   const EMBEDDED_TOOL_VERSIONS: typeof import('./lib/native-tools-manifest').EMBEDDED_TOOL_VERSIONS
   const EffectScope: typeof import('vue').EffectScope
@@ -257,6 +259,7 @@ declare global {
   const unrefElement: typeof import('@vueuse/core').unrefElement
   const until: typeof import('@vueuse/core').until
   const useActiveElement: typeof import('@vueuse/core').useActiveElement
+  const useAiChatStore: typeof import('./stores/ai-chat').useAiChatStore
   const useAnimate: typeof import('@vueuse/core').useAnimate
   const useArrayDifference: typeof import('@vueuse/core').useArrayDifference
   const useArrayEvery: typeof import('@vueuse/core').useArrayEvery
@@ -456,6 +459,9 @@ declare global {
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, ShallowRef, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { AiChat, IAiChatModel, AiChatMcpServerId, AiChatMcpServerStatus, IAiChatMcpToolInfo, IAiChatMcpResourceInfo, IAiChatMcpPromptInfo, IAiChatMcpServerSnapshot, IAiChatSession } from './lib/AiChat'
+  import('./lib/AiChat')
+  // @ts-ignore
   export type { AppAnalytics } from './lib/Analytics'
   import('./lib/Analytics')
   // @ts-ignore
@@ -542,6 +548,9 @@ declare global {
   // @ts-ignore
   export type { NexusModsAuthorizationError, ThirdPartyProvider, ThirdPartyDescriptionFormat, IThirdPartyListQuery, IThirdPartyModFile, IThirdPartyModItem, IThirdPartyModDetail, IThirdPartyModListResult, IThirdPartyModFacetOption, IThirdPartyModFacets, INexusModsFacetSelection, IThirdPartyProviderOption, INexusModsDownloadAuthorization } from './lib/third-party-mod-api'
   import('./lib/third-party-mod-api')
+  // @ts-ignore
+  export type { IAiChatMessageMetadata } from './stores/ai-chat'
+  import('./stores/ai-chat')
   // @ts-ignore
   export type { IDownloadFilePickerItem, IDownloadFilePickerRequest } from './stores/download-picker'
   import('./stores/download-picker')
