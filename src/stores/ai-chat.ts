@@ -1,7 +1,13 @@
 import { Chat } from "@ai-sdk/vue";
-import { DirectChatTransport, type InferUITools, type UIMessage } from "ai";
+import {
+    type ChatTransport,
+    DirectChatTransport,
+    type FileUIPart,
+    type InferUITools,
+    type UIMessage,
+} from "ai";
 import { storeToRefs } from "pinia";
-import { computed, ref, shallowRef } from "vue";
+import { computed, isProxy, ref, shallowRef, toRaw, watch } from "vue";
 import {
     AiChat,
     type AiChatMcpServerId,
@@ -10,9 +16,14 @@ import {
     type IAiChatSession,
     DEFAULT_AI_CHAT_SYSTEM_PROMPT,
 } from "@/lib/AiChat";
+import { buildAiChatAttachmentPromptText } from "../lib/ai-chat-attachments";
 import { McpService } from "@/lib/mcp-service";
 import { PersistentStore } from "@/lib/persistent-store";
 import { useSettings } from "@/stores/settings";
+
+const AI_CHAT_CONVERSATION_LIST_KEY = "aiChatConversationList";
+const AI_CHAT_ACTIVE_CONVERSATION_ID_KEY = "aiChatActiveConversationId";
+const STREAMING_CONVERSATION_SYNC_INTERVAL = 1000;
 
 export interface IAiChatMessageMetadata {
     createdAt?: number;
@@ -21,8 +32,21 @@ export interface IAiChatMessageMetadata {
     totalTokens?: number;
 }
 
-type IAiChatUIMessage = UIMessage<IAiChatMessageMetadata>;
-type IAiChatTransportMessage = UIMessage<unknown, never, InferUITools<{}>>;
+export type IAiChatUIMessage = UIMessage<IAiChatMessageMetadata>;
+type IAiChatTransportMessage = UIMessage<
+    IAiChatMessageMetadata,
+    never,
+    InferUITools<{}>
+>;
+
+export interface IAiChatConversation {
+    id: string;
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+    modelId?: string;
+    messages: IAiChatUIMessage[];
+}
 
 function toErrorMessage(error: unknown, fallbackMessage: string) {
     if (error instanceof Error && error.message.trim()) {
@@ -46,6 +70,166 @@ function toErrorMessage(error: unknown, fallbackMessage: string) {
     return fallbackMessage;
 }
 
+function createConversationId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+
+    return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function unwrapReactiveValue<T>(value: T): T {
+    if (Array.isArray(value)) {
+        return value.map((item) => unwrapReactiveValue(item)) as T;
+    }
+
+    if (!value || typeof value !== "object") {
+        return value;
+    }
+
+    const source = isProxy(value) ? toRaw(value) : value;
+
+    if (
+        source instanceof Date ||
+        source instanceof Blob ||
+        source instanceof File ||
+        source instanceof ArrayBuffer ||
+        ArrayBuffer.isView(source)
+    ) {
+        return source as T;
+    }
+
+    if (source instanceof Map) {
+        return new Map(
+            Array.from(source.entries(), ([key, item]) => [
+                unwrapReactiveValue(key),
+                unwrapReactiveValue(item),
+            ]),
+        ) as T;
+    }
+
+    if (source instanceof Set) {
+        return new Set(
+            Array.from(source, (item) => unwrapReactiveValue(item)),
+        ) as T;
+    }
+
+    if (Array.isArray(source)) {
+        return source.map((item) => unwrapReactiveValue(item)) as T;
+    }
+
+    const prototype = Object.getPrototypeOf(source);
+
+    if (prototype !== Object.prototype && prototype !== null) {
+        return source as T;
+    }
+
+    return Object.fromEntries(
+        Object.entries(source).map(([key, item]) => [
+            key,
+            unwrapReactiveValue(item),
+        ]),
+    ) as T;
+}
+
+function cloneMessages(
+    messages: IAiChatUIMessage[],
+): IAiChatTransportMessage[] {
+    const normalizedMessages = unwrapReactiveValue(messages);
+
+    return structuredClone(normalizedMessages) as IAiChatTransportMessage[];
+}
+
+function isFilePart(
+    part: IAiChatUIMessage["parts"][number],
+): part is FileUIPart {
+    return part.type === "file";
+}
+
+function getMessageText(message: IAiChatUIMessage | undefined) {
+    if (!message) {
+        return "";
+    }
+
+    return message.parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+        .trim();
+}
+
+function createConversationTitle(text: string, files: FileUIPart[] = []) {
+    const firstLine = text
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .find(Boolean);
+    const sourceTitle = firstLine || files[0]?.filename || "附件对话";
+    const normalizedTitle = sourceTitle.replace(/\s+/gu, " ").trim();
+
+    if (normalizedTitle.length <= 24) {
+        return normalizedTitle;
+    }
+
+    return `${normalizedTitle.slice(0, 24)}...`;
+}
+
+function createEmptyConversation(modelId?: string): IAiChatConversation {
+    const now = Date.now();
+
+    return {
+        id: createConversationId(),
+        title: "新会话",
+        createdAt: now,
+        updatedAt: now,
+        modelId,
+        messages: [],
+    };
+}
+
+function transformMessageForModel(
+    message: IAiChatTransportMessage,
+): IAiChatTransportMessage {
+    if (message.role !== "user") {
+        return message;
+    }
+
+    const messageParts = message.parts.filter((part) => {
+        return part.type !== "file";
+    });
+    const attachmentParts = message.parts.filter(isFilePart).map((part) => {
+        return {
+            type: "text",
+            text: buildAiChatAttachmentPromptText(part),
+        } satisfies IAiChatTransportMessage["parts"][number];
+    });
+
+    if (attachmentParts.length === 0) {
+        return message;
+    }
+
+    return {
+        ...message,
+        // 仅在发送给模型时把附件转换成文本上下文，UI 和本地历史仍保留原始附件。
+        parts: [...messageParts, ...attachmentParts],
+    };
+}
+
+function createAttachmentCompatibleTransport(
+    transport: ChatTransport<IAiChatTransportMessage>,
+): ChatTransport<IAiChatTransportMessage> {
+    return {
+        sendMessages: async (options) => {
+            return await transport.sendMessages({
+                ...options,
+                messages: options.messages.map(transformMessageForModel),
+            });
+        },
+        reconnectToStream: async (options) => {
+            return await transport.reconnectToStream(options);
+        },
+    };
+}
+
 export const useAiChatStore = defineStore("AiChat", () => {
     const settings = useSettings();
     const { apiKey, baseUrl } = storeToRefs(settings);
@@ -64,15 +248,28 @@ export const useAiChatStore = defineStore("AiChat", () => {
         "gloss-mod-manager": true,
         "gloss-mod": false,
     });
+    const conversationList = PersistentStore.useValue<IAiChatConversation[]>(
+        AI_CHAT_CONVERSATION_LIST_KEY,
+        [],
+    );
+    const activeConversationId = PersistentStore.useValue<string>(
+        AI_CHAT_ACTIVE_CONVERSATION_ID_KEY,
+        "",
+    );
 
     const modelList = ref<IAiChatModel[]>([]);
     const serverSnapshots = ref<IAiChatMcpServerSnapshot[]>([]);
     const modelLoadError = ref("");
     const sessionError = ref("");
     const initialized = ref(false);
+    const aiConfigurationHydrated = ref(false);
+    const conversationStateHydrated = ref(false);
     const loadingModels = ref(false);
     const refreshingServers = ref(false);
     const rebuildingSession = ref(false);
+    const hasDeferredConversationSync = ref(false);
+    let streamingConversationSyncTimer: ReturnType<typeof setTimeout> | null =
+        null;
 
     const chat = shallowRef<Chat<IAiChatTransportMessage> | null>(null);
     const session = shallowRef<IAiChatSession | null>(null);
@@ -82,11 +279,31 @@ export const useAiChatStore = defineStore("AiChat", () => {
     const localServerBusy = McpService.isBusy;
 
     const hasConfiguration = computed(() => {
-        return Boolean(baseUrl.value.trim());
+        return !configurationErrorMessage.value;
+    });
+
+    const configurationErrorMessage = computed(() => {
+        const missingItems: string[] = [];
+
+        if (!baseUrl.value.trim()) {
+            missingItems.push("AI Base URL");
+        }
+
+        if (!apiKey.value.trim()) {
+            missingItems.push("API Key");
+        }
+
+        if (missingItems.length === 0) {
+            return "";
+        }
+
+        return `请先在设置页配置${missingItems.join(" 和 ")}。`;
     });
 
     const messages = computed<IAiChatUIMessage[]>(() => {
-        return (chat.value?.messages ?? []) as IAiChatUIMessage[];
+        return (chat.value?.messages ??
+            activeConversation.value?.messages ??
+            []) as IAiChatUIMessage[];
     });
 
     const status = computed(() => {
@@ -101,6 +318,14 @@ export const useAiChatStore = defineStore("AiChat", () => {
         return Boolean(session.value && chat.value);
     });
 
+    const activeConversation = computed(() => {
+        return (
+            conversationList.value.find((item) => {
+                return item.id === activeConversationId.value;
+            }) ?? null
+        );
+    });
+
     const busy = computed(() => {
         return (
             loadingModels.value ||
@@ -109,8 +334,227 @@ export const useAiChatStore = defineStore("AiChat", () => {
         );
     });
 
+    async function syncConversationPersistence(flushToDisk: boolean = false) {
+        await Promise.all([
+            PersistentStore.set(
+                AI_CHAT_CONVERSATION_LIST_KEY,
+                conversationList.value,
+                flushToDisk,
+            ),
+            PersistentStore.set(
+                AI_CHAT_ACTIVE_CONVERSATION_ID_KEY,
+                activeConversationId.value,
+                flushToDisk,
+            ),
+        ]);
+    }
+
+    function flushConversationPersistence(reason: string) {
+        // 关闭窗口时应用会转为隐藏，因此关键变更需要显式写盘。
+        void syncConversationPersistence(true).catch((error: unknown) => {
+            console.error(`持久化 AI 会话失败：${reason}`);
+            console.error(error);
+        });
+    }
+
+    function clearStreamingConversationSyncTimer() {
+        if (!streamingConversationSyncTimer) {
+            return;
+        }
+
+        clearTimeout(streamingConversationSyncTimer);
+        streamingConversationSyncTimer = null;
+    }
+
+    function scheduleStreamingConversationSync() {
+        hasDeferredConversationSync.value = true;
+
+        if (streamingConversationSyncTimer) {
+            return;
+        }
+
+        // 流式阶段按固定间隔同步快照，既保留中途保存能力，也避免每个 chunk 都全量克隆。
+        streamingConversationSyncTimer = globalThis.setTimeout(() => {
+            streamingConversationSyncTimer = null;
+
+            if (
+                status.value !== "streaming" ||
+                !hasDeferredConversationSync.value
+            ) {
+                return;
+            }
+
+            persistActiveConversation(messages.value);
+            hasDeferredConversationSync.value = false;
+        }, STREAMING_CONVERSATION_SYNC_INTERVAL);
+    }
+
     function createService() {
         return new AiChat(baseUrl.value, apiKey.value);
+    }
+
+    function normalizeConversationList(list: IAiChatConversation[]) {
+        return [...list].sort((left, right) => {
+            return right.updatedAt - left.updatedAt;
+        });
+    }
+
+    async function hydrateAiConfiguration() {
+        if (aiConfigurationHydrated.value) {
+            return;
+        }
+
+        const [savedBaseUrl, savedApiKey] = await Promise.all([
+            PersistentStore.get<string>("agentbaseUrl", ""),
+            PersistentStore.get<string>("agentApiKey", ""),
+        ]);
+
+        if (!baseUrl.value.trim() && savedBaseUrl?.trim()) {
+            baseUrl.value = savedBaseUrl.trim();
+        }
+
+        if (!apiKey.value.trim() && savedApiKey?.trim()) {
+            apiKey.value = savedApiKey.trim();
+        }
+
+        aiConfigurationHydrated.value = true;
+    }
+
+    async function hydrateConversationState() {
+        if (conversationStateHydrated.value) {
+            return;
+        }
+
+        const [savedConversationList, savedActiveConversationId] =
+            await Promise.all([
+                PersistentStore.get<IAiChatConversation[]>(
+                    AI_CHAT_CONVERSATION_LIST_KEY,
+                    [],
+                ),
+                PersistentStore.get<string>(
+                    AI_CHAT_ACTIVE_CONVERSATION_ID_KEY,
+                    "",
+                ),
+            ]);
+
+        const normalizedConversationList = normalizeConversationList(
+            savedConversationList ?? [],
+        );
+        const normalizedActiveConversationId =
+            savedActiveConversationId?.trim() ?? "";
+
+        conversationList.value = normalizedConversationList;
+        activeConversationId.value = normalizedActiveConversationId;
+
+        if (
+            normalizedActiveConversationId &&
+            !normalizedConversationList.some((item) => {
+                return item.id === normalizedActiveConversationId;
+            })
+        ) {
+            activeConversationId.value = "";
+        }
+
+        conversationStateHydrated.value = true;
+    }
+
+    function getBootstrapMessages(
+        previousChat: Chat<IAiChatTransportMessage> | null,
+        preserveMessages: boolean,
+    ) {
+        if (preserveMessages && previousChat?.messages.length) {
+            return cloneMessages(
+                previousChat.messages as IAiChatUIMessage[],
+            ) as IAiChatTransportMessage[];
+        }
+
+        const currentConversationMessages = activeConversation.value?.messages;
+
+        if (currentConversationMessages?.length) {
+            return cloneMessages(currentConversationMessages);
+        }
+
+        return [] as IAiChatTransportMessage[];
+    }
+
+    function upsertConversation(
+        conversation: IAiChatConversation,
+    ): IAiChatConversation {
+        const nextList = conversationList.value.filter((item) => {
+            return item.id !== conversation.id;
+        });
+
+        conversationList.value = normalizeConversationList([
+            conversation,
+            ...nextList,
+        ]);
+
+        return conversation;
+    }
+
+    function ensureActiveConversation(files: FileUIPart[] = []) {
+        const existingConversation = activeConversation.value;
+
+        if (existingConversation) {
+            return existingConversation;
+        }
+
+        const nextConversation = createEmptyConversation(
+            selectedModelId.value.trim() || undefined,
+        );
+        const firstUserMessage = messages.value.find((message) => {
+            return message.role === "user";
+        });
+        const firstText = getMessageText(firstUserMessage);
+
+        nextConversation.title =
+            firstText || files.length > 0
+                ? createConversationTitle(firstText, files)
+                : "新会话";
+        activeConversationId.value = nextConversation.id;
+        const conversation = upsertConversation(nextConversation);
+
+        flushConversationPersistence("创建会话");
+
+        return conversation;
+    }
+
+    function persistActiveConversation(
+        nextMessages = messages.value,
+        options: {
+            flushToDisk?: boolean;
+        } = {},
+    ) {
+        const existingConversation = activeConversation.value;
+
+        if (!existingConversation) {
+            return;
+        }
+
+        const firstUserMessage = nextMessages.find((message) => {
+            return message.role === "user";
+        });
+        const firstText = getMessageText(firstUserMessage);
+        const firstFiles = firstUserMessage?.parts.filter(isFilePart) ?? [];
+        const shouldGenerateTitle =
+            existingConversation.title === "新会话" ||
+            !existingConversation.title.trim();
+
+        upsertConversation({
+            ...existingConversation,
+            title:
+                shouldGenerateTitle && (firstText || firstFiles.length > 0)
+                    ? createConversationTitle(firstText, firstFiles)
+                    : existingConversation.title,
+            updatedAt: Date.now(),
+            modelId:
+                selectedModelId.value.trim() || existingConversation.modelId,
+            messages: cloneMessages(nextMessages),
+        });
+
+        if (options.flushToDisk) {
+            flushConversationPersistence("更新消息历史");
+        }
     }
 
     async function refreshModels() {
@@ -161,7 +605,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
 
     async function rebuildSession(preserveMessages: boolean = true) {
         if (!hasConfiguration.value) {
-            sessionError.value = "请先在设置页配置 AI Base URL。";
+            sessionError.value = configurationErrorMessage.value;
             return false;
         }
 
@@ -175,9 +619,10 @@ export const useAiChatStore = defineStore("AiChat", () => {
         rebuildingSession.value = true;
         const previousChat = chat.value;
         const previousSession = session.value;
-        const preservedMessages = (
-            preserveMessages ? (previousChat?.messages ?? []) : []
-        ) as IAiChatTransportMessage[];
+        const preservedMessages = getBootstrapMessages(
+            previousChat,
+            preserveMessages,
+        );
 
         try {
             if (
@@ -195,30 +640,32 @@ export const useAiChatStore = defineStore("AiChat", () => {
             });
             const nextChat = new Chat<IAiChatTransportMessage>({
                 messages: preservedMessages,
-                transport: new DirectChatTransport({
-                    agent: nextSession.agent,
-                    sendReasoning: true,
-                    onError: (error) => {
-                        return toErrorMessage(error, "AI 对话失败。");
-                    },
-                    messageMetadata: ({ part }) => {
-                        if (part.type === "start") {
-                            return {
-                                createdAt: Date.now(),
-                                modelId,
-                            } satisfies IAiChatMessageMetadata;
-                        }
+                transport: createAttachmentCompatibleTransport(
+                    new DirectChatTransport({
+                        agent: nextSession.agent,
+                        sendReasoning: true,
+                        onError: (error) => {
+                            return toErrorMessage(error, "AI 对话失败。");
+                        },
+                        messageMetadata: ({ part }) => {
+                            if (part.type === "start") {
+                                return {
+                                    createdAt: Date.now(),
+                                    modelId,
+                                } satisfies IAiChatMessageMetadata;
+                            }
 
-                        if (part.type === "finish") {
-                            return {
-                                finishReason: part.finishReason,
-                                totalTokens: part.totalUsage.totalTokens,
-                            } satisfies IAiChatMessageMetadata;
-                        }
+                            if (part.type === "finish") {
+                                return {
+                                    finishReason: part.finishReason,
+                                    totalTokens: part.totalUsage.totalTokens,
+                                } satisfies IAiChatMessageMetadata;
+                            }
 
-                        return undefined;
-                    },
-                }),
+                            return undefined;
+                        },
+                    }),
+                ),
                 onError: (error) => {
                     sessionError.value = toErrorMessage(error, "AI 对话失败。");
                 },
@@ -243,6 +690,8 @@ export const useAiChatStore = defineStore("AiChat", () => {
     }
 
     async function initialize() {
+        await hydrateConversationState();
+        await hydrateAiConfiguration();
         await refreshModels();
         await refreshServers();
 
@@ -261,7 +710,15 @@ export const useAiChatStore = defineStore("AiChat", () => {
         selectedModelId.value = options.modelId.trim();
         systemPrompt.value = options.systemPrompt;
 
-        return rebuildSession(options.preserveMessages ?? true);
+        const rebuilt = await rebuildSession(options.preserveMessages ?? true);
+
+        if (rebuilt) {
+            persistActiveConversation(messages.value, {
+                flushToDisk: true,
+            });
+        }
+
+        return rebuilt;
     }
 
     async function setMcpServerEnabled(
@@ -298,11 +755,19 @@ export const useAiChatStore = defineStore("AiChat", () => {
         }
     }
 
-    async function sendText(text: string) {
+    function getFileCount(files?: FileList | FileUIPart[]) {
+        if (!files) {
+            return 0;
+        }
+
+        return files.length;
+    }
+
+    async function sendMessage(text: string, files?: FileList | FileUIPart[]) {
         const normalizedText = text.trim();
 
-        if (!normalizedText) {
-            return;
+        if (!normalizedText && getFileCount(files) === 0) {
+            return false;
         }
 
         if (!chat.value) {
@@ -313,9 +778,28 @@ export const useAiChatStore = defineStore("AiChat", () => {
             }
         }
 
+        const fileParts = Array.isArray(files) ? files : [];
+        ensureActiveConversation(fileParts);
+
         await chat.value.sendMessage({
             text: normalizedText,
+            ...(files && getFileCount(files) > 0
+                ? {
+                      files,
+                  }
+                : {}),
+            metadata: {
+                createdAt: Date.now(),
+                modelId: selectedModelId.value.trim() || undefined,
+            },
         });
+        persistActiveConversation();
+
+        return true;
+    }
+
+    async function sendText(text: string) {
+        await sendMessage(text);
     }
 
     async function stopGeneration() {
@@ -329,21 +813,209 @@ export const useAiChatStore = defineStore("AiChat", () => {
 
         chat.value.messages = [];
         sessionError.value = "";
+        persistActiveConversation([], {
+            flushToDisk: true,
+        });
+    }
+
+    async function createNewConversation() {
+        await stopGeneration();
+
+        const nextConversation = upsertConversation(
+            createEmptyConversation(selectedModelId.value.trim() || undefined),
+        );
+
+        activeConversationId.value = nextConversation.id;
+
+        if (
+            !chat.value &&
+            hasConfiguration.value &&
+            selectedModelId.value.trim()
+        ) {
+            await rebuildSession(false);
+        }
+
+        if (chat.value) {
+            chat.value.messages = [];
+        }
+
+        sessionError.value = "";
+        flushConversationPersistence("创建新会话");
+
+        return nextConversation.id;
+    }
+
+    async function switchConversation(conversationId: string) {
+        const targetConversation = conversationList.value.find((item) => {
+            return item.id === conversationId;
+        });
+
+        if (!targetConversation) {
+            throw new Error("未找到指定历史会话。");
+        }
+
+        await stopGeneration();
+        activeConversationId.value = targetConversation.id;
+
+        if (!chat.value) {
+            const ready = await rebuildSession(false);
+
+            if (!ready || !chat.value) {
+                throw new Error(sessionError.value || "AI 会话尚未就绪。");
+            }
+        }
+
+        chat.value.messages = cloneMessages(targetConversation.messages);
+        sessionError.value = "";
+        flushConversationPersistence("切换当前会话");
+    }
+
+    async function deleteConversation(conversationId: string) {
+        const deletingActive = conversationId === activeConversationId.value;
+
+        if (deletingActive) {
+            await stopGeneration();
+        }
+
+        conversationList.value = conversationList.value.filter((item) => {
+            return item.id !== conversationId;
+        });
+
+        if (!deletingActive) {
+            return;
+        }
+
+        activeConversationId.value = "";
+
+        if (chat.value) {
+            chat.value.messages = [];
+        }
+
+        flushConversationPersistence("删除会话");
+    }
+
+    async function editUserMessage(messageId: string, text: string) {
+        const normalizedText = text.trim();
+
+        if (!normalizedText) {
+            throw new Error("消息内容不能为空。");
+        }
+
+        if (!chat.value) {
+            throw new Error("AI 会话尚未就绪。");
+        }
+
+        const targetMessage = messages.value.find((message) => {
+            return message.id === messageId;
+        });
+
+        if (!targetMessage || targetMessage.role !== "user") {
+            throw new Error("只能编辑用户消息。");
+        }
+
+        const fileParts = targetMessage.parts.filter(isFilePart);
+
+        ensureActiveConversation(fileParts);
+
+        await chat.value.sendMessage({
+            text: normalizedText,
+            files: fileParts,
+            messageId,
+            metadata: {
+                createdAt: Date.now(),
+                modelId: selectedModelId.value.trim() || undefined,
+            },
+        });
+        persistActiveConversation();
+    }
+
+    async function regenerateMessage(messageId?: string) {
+        if (!chat.value) {
+            throw new Error("AI 会话尚未就绪。");
+        }
+
+        ensureActiveConversation();
+        await chat.value.regenerate({ messageId });
+        persistActiveConversation();
     }
 
     async function disposeSession() {
+        clearStreamingConversationSyncTimer();
         await chat.value?.stop().catch(() => undefined);
         await session.value?.dispose().catch(() => undefined);
         chat.value = null;
         session.value = null;
     }
 
+    watch(
+        messages,
+        (nextMessages) => {
+            if (!chat.value) {
+                return;
+            }
+
+            if (status.value === "streaming") {
+                scheduleStreamingConversationSync();
+                return;
+            }
+
+            persistActiveConversation(nextMessages);
+            hasDeferredConversationSync.value = false;
+        },
+        {
+            deep: true,
+        },
+    );
+
+    watch(status, (nextStatus, previousStatus) => {
+        if (!chat.value) {
+            return;
+        }
+
+        if (nextStatus === previousStatus) {
+            return;
+        }
+
+        if (previousStatus === "streaming") {
+            clearStreamingConversationSyncTimer();
+        }
+
+        if (
+            previousStatus === "streaming" &&
+            hasDeferredConversationSync.value
+        ) {
+            persistActiveConversation(messages.value, {
+                flushToDisk: true,
+            });
+            hasDeferredConversationSync.value = false;
+
+            return;
+        }
+
+        if (
+            nextStatus === "submitted" ||
+            nextStatus === "ready" ||
+            nextStatus === "error"
+        ) {
+            persistActiveConversation(messages.value, {
+                flushToDisk: true,
+            });
+        }
+    });
+
     return {
+        activeConversation,
+        activeConversationId,
         busy,
         chat,
         chatError,
         clearMessages,
+        configurationErrorMessage,
+        conversationList,
+        createNewConversation,
+        deleteConversation,
         disposeSession,
+        editUserMessage,
         hasActiveSession,
         hasConfiguration,
         initialize,
@@ -361,6 +1033,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
         refreshingServers,
         refreshServers,
         selectedModelId,
+        sendMessage,
         sendText,
         serverSnapshots,
         session,
@@ -368,7 +1041,9 @@ export const useAiChatStore = defineStore("AiChat", () => {
         setMcpServerEnabled,
         startLocalServer,
         status,
+        regenerateMessage,
         stopGeneration,
+        switchConversation,
         stopLocalServer,
         systemPrompt,
         applySessionConfig,

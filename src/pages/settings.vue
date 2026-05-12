@@ -425,7 +425,7 @@ watch(
                         </div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card id="ai-config" class="scroll-mt-4">
                     <CardHeader>
                         <CardTitle>
                             <h3>AI配置</h3>
@@ -437,7 +437,7 @@ watch(
                                 <InputGroup>
                                     <InputGroupInput
                                         type="text"
-                                        placeholder="Bass Url"
+                                        placeholder="Base Url"
                                         v-model="baseUrl"
                                     />
                                     <InputGroupAddon>

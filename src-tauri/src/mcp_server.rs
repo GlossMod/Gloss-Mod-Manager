@@ -497,8 +497,9 @@ fn write_response(
     let mut response = format!(
         "HTTP/1.1 {} {}\r\n\
 Access-Control-Allow-Origin: *\r\n\
-Access-Control-Allow-Headers: content-type, accept\r\n\
-Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+Access-Control-Allow-Headers: content-type, accept, authorization, mcp-protocol-version, mcp-session-id, last-event-id\r\n\
+Access-Control-Expose-Headers: content-type, mcp-session-id, www-authenticate\r\n\
+Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n\
 Cache-Control: no-store\r\n\
 Connection: close\r\n\
 Content-Length: {}\r\n",

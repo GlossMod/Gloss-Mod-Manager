@@ -48,6 +48,7 @@ declare global {
   const autoImportCompletedDownloadTasks: typeof import('./lib/gloss-download-monitor').autoImportCompletedDownloadTasks
   const autoImportCompletedGlossTasks: typeof import('./lib/gloss-download-monitor').autoImportCompletedGlossTasks
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
+  const buildAiChatAttachmentPromptText: typeof import('./lib/ai-chat-attachments').buildAiChatAttachmentPromptText
   const buildAria2DownloadArgs: typeof import('./lib/aria2').buildAria2DownloadArgs
   const buildAria2RpcServerArgs: typeof import('./lib/aria2').buildAria2RpcServerArgs
   const buildGlossOutputFileName: typeof import('./lib/gloss-download-queue').buildGlossOutputFileName
@@ -94,6 +95,7 @@ declare global {
   const executeSevenZipSidecar: typeof import('./lib/sidecar').executeSevenZipSidecar
   const executeSidecar: typeof import('./lib/sidecar').executeSidecar
   const extendRef: typeof import('@vueuse/core').extendRef
+  const extractAiChatAttachmentText: typeof import('./lib/ai-chat-attachments').extractAiChatAttachmentText
   const extractArchiveWithSevenZip: typeof import('./lib/sevenZip').extractArchiveWithSevenZip
   const fetchAllGlossGames: typeof import('./lib/gloss-mod-api').fetchAllGlossGames
   const fetchGlossGamePlugins: typeof import('./lib/gloss-mod-api').fetchGlossGamePlugins
@@ -130,6 +132,7 @@ declare global {
   const injectLocal: typeof import('@vueuse/core').injectLocal
   const installGmmPackage: typeof import('./lib/gmm-package').installGmmPackage
   const installPendingAppUpdate: typeof import('./lib/app-updater').installPendingAppUpdate
+  const isAiChatTextLikeMediaType: typeof import('./lib/ai-chat-attachments').isAiChatTextLikeMediaType
   const isDefined: typeof import('@vueuse/core').isDefined
   const isGlossCloudDriveResource: typeof import('./lib/gloss-download-queue').isGlossCloudDriveResource
   const isGlossCloudDriveUrl: typeof import('./lib/gloss-download-queue').isGlossCloudDriveUrl
@@ -210,6 +213,7 @@ declare global {
   const refWithControl: typeof import('@vueuse/core').refWithControl
   const removeAria2TaskSnapshot: typeof import('./lib/aria2-task-cache').removeAria2TaskSnapshot
   const removeAria2TaskSnapshots: typeof import('./lib/aria2-task-cache').removeAria2TaskSnapshots
+  const resolveAiChatAttachmentMediaType: typeof import('./lib/ai-chat-attachments').resolveAiChatAttachmentMediaType
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveGlossAssetUrl: typeof import('./lib/gloss-mod-api').resolveGlossAssetUrl
   const resolveGlossDownloadImportSourceType: typeof import('./lib/gloss-download-queue').resolveGlossDownloadImportSourceType
@@ -549,7 +553,7 @@ declare global {
   export type { NexusModsAuthorizationError, ThirdPartyProvider, ThirdPartyDescriptionFormat, IThirdPartyListQuery, IThirdPartyModFile, IThirdPartyModItem, IThirdPartyModDetail, IThirdPartyModListResult, IThirdPartyModFacetOption, IThirdPartyModFacets, INexusModsFacetSelection, IThirdPartyProviderOption, INexusModsDownloadAuthorization } from './lib/third-party-mod-api'
   import('./lib/third-party-mod-api')
   // @ts-ignore
-  export type { IAiChatMessageMetadata } from './stores/ai-chat'
+  export type { IAiChatMessageMetadata, IAiChatUIMessage, IAiChatConversation } from './stores/ai-chat'
   import('./stores/ai-chat')
   // @ts-ignore
   export type { IDownloadFilePickerItem, IDownloadFilePickerRequest } from './stores/download-picker'

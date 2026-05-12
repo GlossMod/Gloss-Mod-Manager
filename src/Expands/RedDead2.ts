@@ -1,38 +1,52 @@
 import { basename, dirname, join } from "@tauri-apps/api/path";
-import { Builder, parseStringPromise } from "xml2js";
 import { ElMessage } from "element-plus-message";
 import { FileHandler } from "@/lib/FileHandler";
 import { Manager } from "@/lib/Manager";
 
-type RedDeadModsXml = {
-    ModsManager: {
-        Mods: Array<{
-            Mod?: Array<{
-                $?: {
-                    folder?: string;
-                };
-                Name?: string[];
-                Enabled?: Array<boolean | string>;
-                Overwrite?: string[];
-                DisabledGroups?: string[];
-            }>;
-        }>;
-        LoadOrder: Array<{
-            Mod?: string[];
-        }>;
-    };
-};
+function parseXmlDocument(raw: string) {
+    const document = new DOMParser().parseFromString(raw, "application/xml");
+    const parserError = document.querySelector("parsererror");
 
-async function readModsXmlData(): Promise<RedDeadModsXml> {
+    if (parserError) {
+        throw new Error(parserError.textContent?.trim() || "XML 解析失败。");
+    }
+
+    return document;
+}
+
+function ensureChildElement(parent: Element, tagName: string) {
+    const existingChild = Array.from(parent.children).find((item) => {
+        return item.tagName === tagName;
+    });
+
+    if (existingChild) {
+        return existingChild;
+    }
+
+    const child = parent.ownerDocument.createElement(tagName);
+    parent.appendChild(child);
+    return child;
+}
+
+function setChildText(parent: Element, tagName: string, value: string) {
+    const child = ensureChildElement(parent, tagName);
+    child.textContent = value;
+    return child;
+}
+
+function serializeXmlDocument(document: XMLDocument) {
+    const content = new XMLSerializer().serializeToString(document);
+
+    return `<?xml version="1.0" encoding="UTF-8"?>\n${content}`;
+}
+
+async function readModsXmlDocument(): Promise<XMLDocument> {
     const { gameStorage } = await Manager.getContext();
 
     if (!gameStorage) {
-        return {
-            ModsManager: {
-                Mods: [{ Mod: [] }],
-                LoadOrder: [{ Mod: [] }],
-            },
-        };
+        return parseXmlDocument(
+            `<ModsManager><Mods /><LoadOrder /></ModsManager>`,
+        );
     }
 
     const filePath = await join(gameStorage, "lml", "mods.xml");
@@ -41,10 +55,10 @@ async function readModsXmlData(): Promise<RedDeadModsXml> {
         `<ModsManager><Mods /><LoadOrder /></ModsManager>`,
     );
 
-    return (await parseStringPromise(raw)) as RedDeadModsXml;
+    return parseXmlDocument(raw);
 }
 
-async function writeModsXmlData(value: RedDeadModsXml) {
+async function writeModsXmlDocument(document: XMLDocument) {
     const { gameStorage } = await Manager.getContext();
 
     if (!gameStorage) {
@@ -52,52 +66,50 @@ async function writeModsXmlData(value: RedDeadModsXml) {
     }
 
     const filePath = await join(gameStorage, "lml", "mods.xml");
-    const data = new Builder().buildObject(value);
+    const data = serializeXmlDocument(document);
     await FileHandler.writeFile(filePath, data);
 }
 
 async function installXml(filePath: string, isInstall: boolean) {
     const data = await FileHandler.readFile(filePath, "");
-    const xml = (await parseStringPromise(data)) as {
-        EasyInstall?: {
-            Name?: string[];
-        };
-    };
+    const xml = parseXmlDocument(data);
     const folderPath = await dirname(filePath);
-    const name = xml.EasyInstall?.Name?.[0] ?? (await basename(folderPath));
+    const name =
+        xml.querySelector("EasyInstall > Name")?.textContent?.trim() ||
+        (await basename(folderPath));
     const folder = await basename(folderPath);
 
-    const modsXmlData = await readModsXmlData();
-    const modsManager = modsXmlData.ModsManager;
-    const mods = modsManager.Mods[0] ?? (modsManager.Mods[0] = {});
-    if (!mods.Mod) {
-        mods.Mod = [];
-    }
+    const modsXmlDocument = await readModsXmlDocument();
+    const modsManager = modsXmlDocument.documentElement;
+    const mods = ensureChildElement(modsManager, "Mods");
+    let modEntry = Array.from(mods.children).find((item) => {
+        return item.tagName === "Mod" && item.getAttribute("folder") === folder;
+    });
 
-    let modEntry = mods.Mod.find((item) => item.$?.folder === folder);
     if (modEntry) {
-        modEntry.Enabled = [isInstall];
+        setChildText(modEntry, "Enabled", String(isInstall));
     } else {
-        modEntry = {
-            $: { folder },
-            Name: [name],
-            Enabled: [isInstall],
-            Overwrite: ["false"],
-            DisabledGroups: [""],
-        };
-        mods.Mod.push(modEntry);
+        modEntry = modsXmlDocument.createElement("Mod");
+        modEntry.setAttribute("folder", folder);
+        setChildText(modEntry, "Name", name);
+        setChildText(modEntry, "Enabled", String(isInstall));
+        setChildText(modEntry, "Overwrite", "false");
+        setChildText(modEntry, "DisabledGroups", "");
+        mods.appendChild(modEntry);
     }
 
-    const loadOrder =
-        modsManager.LoadOrder[0] ?? (modsManager.LoadOrder[0] = {});
-    if (!loadOrder.Mod) {
-        loadOrder.Mod = [];
-    }
-    if (!loadOrder.Mod.includes(folder)) {
-        loadOrder.Mod.push(folder);
+    const loadOrder = ensureChildElement(modsManager, "LoadOrder");
+    const hasLoadOrder = Array.from(loadOrder.children).some((item) => {
+        return item.tagName === "Mod" && item.textContent?.trim() === folder;
+    });
+
+    if (!hasLoadOrder) {
+        const loadOrderItem = modsXmlDocument.createElement("Mod");
+        loadOrderItem.textContent = folder;
+        loadOrder.appendChild(loadOrderItem);
     }
 
-    await writeModsXmlData(modsXmlData);
+    await writeModsXmlDocument(modsXmlDocument);
 }
 
 async function handleAsi(mod: IModInfo, isInstall: boolean) {

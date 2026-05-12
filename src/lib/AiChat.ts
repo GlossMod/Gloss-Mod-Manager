@@ -113,6 +113,10 @@ interface IAiChatCreateSessionOptions {
     enabledServers?: Partial<Record<AiChatMcpServerId, boolean>>;
 }
 
+function runtimeFetch(...args: Parameters<typeof fetch>) {
+    return globalThis.fetch(...args);
+}
+
 export class AiChat {
     private baseURL: string;
     private apiKey: string;
@@ -448,7 +452,10 @@ export class AiChat {
 
             try {
                 client = await createMCPClient({
-                    transport: serverConfig.transport,
+                    transport: {
+                        ...serverConfig.transport,
+                        fetch: runtimeFetch,
+                    },
                 });
 
                 const toolDefinitions = await client.listTools();
