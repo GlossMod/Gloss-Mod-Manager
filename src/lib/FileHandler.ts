@@ -164,7 +164,7 @@ export class FileHandler {
                 `$source = ${FileHandler.toPowerShellLiteral(sourcePath)}`,
                 `$itemType = ${FileHandler.toPowerShellLiteral(itemType)}`,
                 "$escapedTarget = [System.Management.Automation.WildcardPattern]::Escape($target)",
-                "$resolvedSource = (Get-Item -LiteralPath $source -Force).FullName",
+                "$resolvedSource = (Get-Item -LiteralPath $source -Force -ErrorAction Stop).FullName",
                 "New-Item -ItemType $itemType -Path $escapedTarget -Target $resolvedSource -ErrorAction Stop | Out-Null",
             ].join("; ");
 
