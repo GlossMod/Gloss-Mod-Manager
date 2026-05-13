@@ -51,6 +51,7 @@ declare global {
   const buildAiChatAttachmentPromptText: typeof import('./lib/ai-chat-attachments').buildAiChatAttachmentPromptText
   const buildAria2DownloadArgs: typeof import('./lib/aria2').buildAria2DownloadArgs
   const buildAria2RpcServerArgs: typeof import('./lib/aria2').buildAria2RpcServerArgs
+  const buildBundledAiChatSkillsPrompt: typeof import('./lib/ai-chat-skills').buildBundledAiChatSkillsPrompt
   const buildGlossOutputFileName: typeof import('./lib/gloss-download-queue').buildGlossOutputFileName
   const buildUniqueGlossFileName: typeof import('./lib/gloss-download').buildUniqueGlossFileName
   const checkForAppUpdates: typeof import('./lib/app-updater').checkForAppUpdates
@@ -108,6 +109,7 @@ declare global {
   const findGlossDuplicateTasks: typeof import('./lib/gloss-download').findGlossDuplicateTasks
   const formatKeywordText: typeof import('./lib/custom-definition-utils').formatKeywordText
   const getActivePinia: typeof import('pinia').getActivePinia
+  const getBundledAiChatSkills: typeof import('./lib/ai-chat-skills').getBundledAiChatSkills
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
@@ -486,6 +488,9 @@ declare global {
   // @ts-ignore
   export type { UnrealEngine } from './lib/UnrealEngine'
   import('./lib/UnrealEngine')
+  // @ts-ignore
+  export type { IAiChatBundledSkill } from './lib/ai-chat-skills'
+  import('./lib/ai-chat-skills')
   // @ts-ignore
   export type { Aria2Rpc, IAria2RpcTaskUri, IAria2RpcTaskFile, IAria2RpcTask, IAria2GlobalStat, IAria2RpcEnsureOptions, IAria2RuntimeSettings } from './lib/aria2-rpc'
   import('./lib/aria2-rpc')

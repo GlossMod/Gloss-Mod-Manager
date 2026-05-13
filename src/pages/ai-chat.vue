@@ -28,6 +28,10 @@ import {
     type AiChatMcpServerId,
     type IAiChatMcpServerSnapshot,
 } from "@/lib/AiChat";
+import {
+    getBundledAiChatSkills,
+    type IAiChatBundledSkill,
+} from "@/lib/ai-chat-skills";
 import { resolveAiChatAttachmentMediaType } from "../lib/ai-chat-attachments";
 import { cn } from "@/lib/utils";
 import { useAiChatStore, type IAiChatUIMessage } from "@/stores/ai-chat";
@@ -38,13 +42,6 @@ interface IAiChatPendingFile {
     mediaType: string;
     size: number;
     url: string;
-}
-
-interface IAiChatSkill {
-    id: string;
-    title: string;
-    description: string;
-    prompt: string;
 }
 
 type IAiChatMessagePart = IAiChatUIMessage["parts"][number];
@@ -94,32 +91,7 @@ markdown.renderer.rules.link_open = (tokens, index, options, _env, self) => {
     return self.renderToken(tokens, index, options);
 };
 
-const skillList: IAiChatSkill[] = [
-    {
-        id: "mod-debug",
-        title: "Mod 排障",
-        description: "分析当前游戏、Mod 列表与常见冲突，给出排查顺序。",
-        prompt: "请作为 Mod 排障助手，先使用可用工具了解当前游戏和已安装 Mod，再按优先级给出排查步骤、可能原因和安全回滚建议。",
-    },
-    {
-        id: "install-guide",
-        title: "安装指导",
-        description: "把用户需求拆成可执行的安装与验证步骤。",
-        prompt: "请把我的 Mod 安装需求整理成简洁步骤，说明前置条件、安装位置、验证方式和失败时的处理办法。",
-    },
-    {
-        id: "resource-search",
-        title: "资源检索",
-        description: "优先调用 MCP 资源或 Prompt 查找站点侧信息。",
-        prompt: "请优先调用 MCP 资源或 Prompt，检索与我的需求相关的站点信息；如果工具不可用，请明确说明缺失条件。",
-    },
-    {
-        id: "release-note",
-        title: "更新说明",
-        description: "生成适合发布的 Mod 或整合包更新说明。",
-        prompt: "请根据我提供的变更内容，生成简洁、分组清晰、适合发布的中文更新说明，并标注兼容性和注意事项。",
-    },
-];
+const skillList = getBundledAiChatSkills();
 
 const draft = ref("");
 const pendingFiles = ref<IAiChatPendingFile[]>([]);
@@ -649,10 +621,14 @@ function handleComposerKeydown(event: KeyboardEvent) {
     }
 }
 
-function applySkill(skill: IAiChatSkill) {
+function applySkill(skill: IAiChatBundledSkill) {
+    const skillTriggerText = [`使用「${skill.name}」skill ,`]
+        .filter(Boolean)
+        .join("\n");
+
     draft.value = draft.value.trim()
-        ? `${draft.value.trim()}\n\n${skill.prompt}`
-        : skill.prompt;
+        ? `${draft.value.trim()}\n\n${skillTriggerText}`
+        : skillTriggerText;
     showSkillsDialog.value = false;
 }
 
@@ -857,7 +833,7 @@ async function stopLocalServer() {
                                 @click="applySkill(skill)"
                             >
                                 <Sparkles class="h-4 w-4" />
-                                {{ skill.title }}
+                                {{ skill.name }}
                             </Button>
                         </div>
                     </div>
@@ -1095,9 +1071,7 @@ async function stopLocalServer() {
                                         }}
                                     </span>
                                     <span v-if="message.metadata?.totalTokens">
-                                        {{
-                                            message.metadata.totalTokens
-                                        }}
+                                        {{ message.metadata.totalTokens }}
                                         tokens
                                     </span>
                                     <template
@@ -1628,26 +1602,37 @@ async function stopLocalServer() {
                         Skills
                     </DialogTitle>
                     <DialogDescription>
-                        选择一个内置技能模板，会把对应提示词追加到输入框中。
+                        这里是 Gloss Mod Manager 提供的内置 skills.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <button
+                <div v-if="skillList.length > 0" class="flex flex-wrap gap-3">
+                    <div
                         v-for="skill in skillList"
                         :key="skill.id"
-                        type="button"
                         class="rounded-xl border p-4 text-left transition-colors hover:bg-muted/50"
                         @click="applySkill(skill)"
                     >
                         <div class="flex items-center gap-2 font-medium">
                             <Sparkles class="h-4 w-4 text-primary" />
-                            {{ skill.title }}
+                            {{ skill.name }}
                         </div>
                         <p class="mt-2 text-sm leading-6 text-muted-foreground">
                             {{ skill.description }}
                         </p>
-                    </button>
+                        <p
+                            v-if="skill.argumentHint"
+                            class="mt-2 text-xs leading-5 text-muted-foreground"
+                        >
+                            建议补充：{{ skill.argumentHint }}
+                        </p>
+                    </div>
+                </div>
+                <div
+                    v-else
+                    class="rounded-xl border border-dashed p-6 text-sm text-muted-foreground"
+                >
+                    当前未发现可用 skills。
                 </div>
             </DialogScrollContent>
         </Dialog>

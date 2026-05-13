@@ -3,6 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, tool, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
 import packageInfo from "../../package.json";
+import { buildBundledAiChatSkillsPrompt } from "@/lib/ai-chat-skills";
 import { McpService } from "@/lib/mcp-service";
 import { PersistentStore } from "@/lib/persistent-store";
 import { useManager } from "@/stores/manager";
@@ -917,6 +918,7 @@ export class AiChat {
         systemPrompt: string | undefined,
         snapshots: IAiChatMcpServerSnapshot[],
     ) {
+        const skillsPrompt = buildBundledAiChatSkillsPrompt();
         const serverLines = snapshots
             .filter((snapshot) => snapshot.enabled)
             .map((snapshot) => {
@@ -936,7 +938,10 @@ export class AiChat {
                 : "当前没有启用任何 MCP 服务。",
             "当问题涉及当前应用状态、当前游戏、Mod 管理或站点上下文时，优先调用工具。",
             "如果需要 MCP 资源或 Prompt，请先调用 list-mcp-resources / list-mcp-prompts，再读取目标项。",
-        ].join("\n\n");
+            skillsPrompt,
+        ]
+            .filter(Boolean)
+            .join("\n\n");
     }
 
     private async disposeConnections(
