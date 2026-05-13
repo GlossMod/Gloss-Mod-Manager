@@ -163,7 +163,9 @@ export class FileHandler {
                 `$target = ${FileHandler.toPowerShellLiteral(targetPath)}`,
                 `$source = ${FileHandler.toPowerShellLiteral(sourcePath)}`,
                 `$itemType = ${FileHandler.toPowerShellLiteral(itemType)}`,
-                "New-Item -ItemType $itemType -Path $target -Target $source -ErrorAction Stop | Out-Null",
+                "$escapedTarget = [System.Management.Automation.WildcardPattern]::Escape($target)",
+                "$resolvedSource = (Get-Item -LiteralPath $source -Force -ErrorAction Stop).FullName",
+                "New-Item -ItemType $itemType -Path $escapedTarget -Target $resolvedSource -ErrorAction Stop | Out-Null",
             ].join("; ");
 
             await FileHandler.executeShellCommand("powershell", [
