@@ -113,6 +113,7 @@ declare global {
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
+  const getExploreTranslationErrorMessage: typeof import('./lib/explore-ai-translation').getExploreTranslationErrorMessage
   const getGlossModPresence: typeof import('./lib/gloss-download').getGlossModPresence
   const getThirdPartyProviderLabel: typeof import('./lib/third-party-mod-api').getThirdPartyProviderLabel
   const h: typeof import('vue').h
@@ -255,6 +256,7 @@ declare global {
   const toRef: typeof import('vue').toRef
   const toRefs: typeof import('vue').toRefs
   const toValue: typeof import('vue').toValue
+  const translateExploreItems: typeof import('./lib/explore-ai-translation').translateExploreItems
   const triggerRef: typeof import('vue').triggerRef
   const tryOnBeforeMount: typeof import('@vueuse/core').tryOnBeforeMount
   const tryOnBeforeUnmount: typeof import('@vueuse/core').tryOnBeforeUnmount
@@ -509,6 +511,9 @@ declare global {
   // @ts-ignore
   export type { DotNetTool } from './lib/dotnet-tool'
   import('./lib/dotnet-tool')
+  // @ts-ignore
+  export type { IExploreTranslationSourceItem, IExploreTranslationEntry, IExploreTranslationRequest } from './lib/explore-ai-translation'
+  import('./lib/explore-ai-translation')
   // @ts-ignore
   export type { GlossDownloadMonitor } from './lib/gloss-download-monitor'
   import('./lib/gloss-download-monitor')

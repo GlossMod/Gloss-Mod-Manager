@@ -290,6 +290,18 @@ const lang = {
             nexusTag: "Nexus 标签",
             allTags: "全部标签",
         },
+        translation: {
+            autoTranslate: "自动翻译",
+            manualTranslate: "翻译内容",
+            cancel: "取消",
+            targetLanguage: "翻译为",
+            chooseLanguage: "选择语言",
+            showOriginal: "显示原文",
+            configureAi: "配置 AI",
+            translating: "AI 正在翻译",
+            failed: "AI 翻译失败。",
+            originalText: "原文",
+        },
         summary: {
             totalResults: "结果总数",
             currentPage: "当前页",

@@ -31,6 +31,13 @@ import {
     type ThirdPartyDescriptionFormat,
     type ThirdPartyProvider,
 } from "@/lib/third-party-mod-api";
+import type { AppLocale } from "@/lang/locales";
+import {
+    getExploreTranslationErrorMessage,
+    translateExploreItems,
+    type IExploreTranslationEntry,
+    type IExploreTranslationSourceItem,
+} from "@/lib/explore-ai-translation";
 
 const DEFAULT_PAGE_SIZE = "12";
 const PAGE_SIZE_OPTIONS = ["12", "20", "36", "48"];
@@ -69,8 +76,37 @@ interface IExploreDownloadStatus {
     progress: number;
 }
 
-const props = defineProps<{
-    provider: ThirdPartyProvider;
+interface ITranslatedBadgeText {
+    key: string;
+    label: string;
+}
+
+const props = withDefaults(
+    defineProps<{
+        provider: ThirdPartyProvider;
+        autoTranslate?: boolean;
+        translationLocale?: AppLocale;
+        showOriginal?: boolean;
+        aiBaseUrl?: string;
+        aiApiKey?: string;
+        aiModelId?: string;
+        manualTranslateToken?: number;
+        cancelTranslateToken?: number;
+    }>(),
+    {
+        autoTranslate: false,
+        translationLocale: "en_US",
+        showOriginal: false,
+        aiBaseUrl: "",
+        aiApiKey: "",
+        aiModelId: "",
+        manualTranslateToken: 0,
+        cancelTranslateToken: 0,
+    },
+);
+
+const emit = defineEmits<{
+    (event: "translationLoadingChange", loading: boolean): void;
 }>();
 
 const manager = useManager();
@@ -104,6 +140,10 @@ const mods = ref<IThirdPartyModItem[]>([]);
 const nexusFacets = ref<IThirdPartyModFacets>(createEmptyThirdPartyModFacets());
 const loading = ref(false);
 const errorMessage = ref("");
+const translationLoading = ref(false);
+const translationErrorMessage = ref("");
+const detailTranslationLoading = ref(false);
+const detailTranslationErrorMessage = ref("");
 const page = ref(1);
 const pageSize = ref(DEFAULT_PAGE_SIZE);
 const isFiltersExpanded = ref(false);
@@ -117,13 +157,22 @@ const queueingResourceKey = ref("");
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detailError = ref("");
+const selectedListItem = ref<IThirdPartyModItem | null>(null);
 const selectedMod = ref<IThirdPartyModDetail | null>(null);
 const taskSnapshots = ref<Record<string, IAria2RpcTask>>({});
+const listTranslationMap = ref<Record<string, IExploreTranslationEntry>>({});
+const detailTranslationMap = ref<Record<string, IExploreTranslationEntry>>({});
+const manualTranslationVisible = ref(false);
+const detailManualTranslationVisible = ref(false);
 
 let requestSequence = 0;
 let detailRequestSequence = 0;
+let translationRequestSequence = 0;
+let detailTranslationRequestSequence = 0;
 let refreshTaskSnapshotPending = false;
 let taskSnapshotTimer: ReturnType<typeof globalThis.setInterval> | null = null;
+let listTranslationAbortController: AbortController | null = null;
+let detailTranslationAbortController: AbortController | null = null;
 
 const currentGame = computed(() => manager.managerGame);
 const currentGameName = computed(() => {
@@ -138,8 +187,26 @@ const providerSupported = computed(() => {
 });
 const renderedDescription = computed(() => {
     return renderDescription(
+        getSelectedModDescription(),
+        getSelectedModDescriptionFormat(),
+    );
+});
+const originalRenderedDescription = computed(() => {
+    return renderDescription(
         selectedMod.value?.description ?? "",
         selectedMod.value?.descriptionFormat ?? "text",
+    );
+});
+const shouldShowOriginalDescription = computed(() => {
+    const mod = selectedMod.value;
+
+    if (!mod || !props.showOriginal) {
+        return false;
+    }
+
+    return hasDifferentTranslation(
+        mod.description,
+        getSelectedModTranslation()?.description,
     );
 });
 const hasActiveFilters = computed(() => {
@@ -187,6 +254,40 @@ const downloadStatusMap = computed<Record<string, IExploreDownloadStatus>>(
         );
     },
 );
+const translationRequestKey = computed(() => {
+    return mods.value
+        .map((item) =>
+            JSON.stringify([
+                item.source,
+                item.id,
+                item.title,
+                item.summary,
+                item.categories,
+                item.tags,
+            ]),
+        )
+        .join("|");
+});
+const detailTranslationRequestKey = computed(() => {
+    const mod = selectedMod.value;
+
+    if (!mod) {
+        return "";
+    }
+
+    return JSON.stringify([
+        mod.source,
+        mod.id,
+        mod.title,
+        mod.summary,
+        mod.description,
+        mod.categories,
+        mod.tags,
+    ]);
+});
+const anyTranslationLoading = computed(() => {
+    return translationLoading.value || detailTranslationLoading.value;
+});
 const summaryCards = computed(() => [
     {
         label: t("explore.summary.totalResults"),
@@ -296,6 +397,88 @@ watch(pageSize, () => {
     void fetchMods();
 });
 
+watch(
+    () => [
+        props.autoTranslate,
+        props.translationLocale,
+        props.aiBaseUrl,
+        props.aiApiKey,
+        props.aiModelId,
+        translationRequestKey.value,
+    ],
+    () => {
+        if (props.autoTranslate) {
+            void refreshTranslations("auto");
+            return;
+        }
+
+        clearListTranslations();
+    },
+    { immediate: true },
+);
+
+watch(
+    () => [
+        props.autoTranslate,
+        props.translationLocale,
+        props.aiBaseUrl,
+        props.aiApiKey,
+        props.aiModelId,
+        detailTranslationRequestKey.value,
+    ],
+    () => {
+        if (props.autoTranslate) {
+            void refreshSelectedModTranslation("auto");
+            return;
+        }
+
+        if (
+            manualTranslationVisible.value &&
+            detailTranslationRequestKey.value
+        ) {
+            void refreshSelectedModTranslation("manual");
+            return;
+        }
+
+        clearDetailTranslations();
+    },
+    { immediate: true },
+);
+
+watch(
+    anyTranslationLoading,
+    (loading) => {
+        emit("translationLoadingChange", loading);
+    },
+    { immediate: true },
+);
+
+watch(
+    () => props.manualTranslateToken,
+    (token, previousToken) => {
+        if (!token || token === previousToken) {
+            return;
+        }
+
+        void refreshTranslations("manual");
+
+        if (selectedMod.value) {
+            void refreshSelectedModTranslation("manual");
+        }
+    },
+);
+
+watch(
+    () => props.cancelTranslateToken,
+    (token, previousToken) => {
+        if (!token || token === previousToken) {
+            return;
+        }
+
+        cancelTranslations();
+    },
+);
+
 watch([selectedNexusCategory, selectedNexusLanguage, selectedNexusTag], () => {
     if (!isNexusModsProvider.value) {
         return;
@@ -351,6 +534,8 @@ watchDebounced(
 );
 
 onBeforeUnmount(() => {
+    cancelTranslations();
+
     if (taskSnapshotTimer !== null) {
         globalThis.clearInterval(taskSnapshotTimer);
         taskSnapshotTimer = null;
@@ -433,6 +618,7 @@ async function openModDetail(item: IThirdPartyModItem) {
     detailOpen.value = true;
     detailLoading.value = true;
     detailError.value = "";
+    selectedListItem.value = item;
     selectedMod.value = null;
 
     const currentDetailRequestSequence = ++detailRequestSequence;
@@ -541,6 +727,405 @@ async function refreshTaskSnapshots() {
     } finally {
         refreshTaskSnapshotPending = false;
     }
+}
+
+function getTranslationKey(item: Pick<IThirdPartyModItem, "source" | "id">) {
+    return `${item.source}-${item.id}`;
+}
+
+function getOptionalDetailDescription(
+    item: IThirdPartyModItem | IThirdPartyModDetail,
+) {
+    return "description" in item ? item.description : "";
+}
+
+function buildTranslationSourceItem(
+    item: IThirdPartyModItem | IThirdPartyModDetail,
+): IExploreTranslationSourceItem {
+    return {
+        id: getTranslationKey(item),
+        title: item.title,
+        summary: item.summary,
+        description: getOptionalDetailDescription(item),
+        categories: item.categories,
+        tags: item.tags,
+    };
+}
+
+type TranslationRefreshMode = "auto" | "manual";
+
+function abortActiveListTranslation() {
+    listTranslationAbortController?.abort();
+    listTranslationAbortController = null;
+}
+
+function abortActiveDetailTranslation() {
+    detailTranslationAbortController?.abort();
+    detailTranslationAbortController = null;
+}
+
+function cancelTranslations() {
+    translationRequestSequence += 1;
+    detailTranslationRequestSequence += 1;
+    abortActiveListTranslation();
+    abortActiveDetailTranslation();
+    translationErrorMessage.value = "";
+    detailTranslationErrorMessage.value = "";
+    translationLoading.value = false;
+    detailTranslationLoading.value = false;
+}
+
+function clearListTranslations() {
+    translationRequestSequence += 1;
+    abortActiveListTranslation();
+    listTranslationMap.value = {};
+    translationErrorMessage.value = "";
+    translationLoading.value = false;
+    manualTranslationVisible.value = false;
+}
+
+function clearDetailTranslations() {
+    detailTranslationRequestSequence += 1;
+    abortActiveDetailTranslation();
+    detailTranslationMap.value = {};
+    detailTranslationErrorMessage.value = "";
+    detailTranslationLoading.value = false;
+    detailManualTranslationVisible.value = false;
+}
+
+async function refreshTranslations(mode: TranslationRefreshMode) {
+    const currentRequestSequence = ++translationRequestSequence;
+
+    if ((mode === "auto" && !props.autoTranslate) || mods.value.length === 0) {
+        clearListTranslations();
+        return;
+    }
+
+    translationLoading.value = true;
+    translationErrorMessage.value = "";
+    abortActiveListTranslation();
+    const abortController = new AbortController();
+
+    listTranslationAbortController = abortController;
+
+    try {
+        const translatedMap = await translateExploreItems({
+            baseUrl: props.aiBaseUrl,
+            apiKey: props.aiApiKey,
+            modelId: props.aiModelId,
+            targetLocale: props.translationLocale,
+            source: props.provider,
+            items: mods.value.map(buildTranslationSourceItem),
+            abortSignal: abortController.signal,
+        });
+
+        if (currentRequestSequence !== translationRequestSequence) {
+            return;
+        }
+
+        listTranslationMap.value = translatedMap;
+        manualTranslationVisible.value = mode === "manual";
+    } catch (error: unknown) {
+        if (currentRequestSequence !== translationRequestSequence) {
+            return;
+        }
+
+        if (abortController.signal.aborted) {
+            translationErrorMessage.value = "";
+            return;
+        }
+
+        listTranslationMap.value = {};
+        manualTranslationVisible.value = false;
+        translationErrorMessage.value = getExploreTranslationErrorMessage(
+            error,
+            t("explore.translation.failed"),
+        );
+        console.error("第三方 Mods AI 翻译失败");
+        console.error(error);
+    } finally {
+        if (currentRequestSequence === translationRequestSequence) {
+            if (listTranslationAbortController === abortController) {
+                listTranslationAbortController = null;
+            }
+
+            translationLoading.value = false;
+        }
+    }
+}
+
+async function refreshSelectedModTranslation(mode: TranslationRefreshMode) {
+    const currentRequestSequence = ++detailTranslationRequestSequence;
+    const mod = selectedMod.value;
+
+    if ((mode === "auto" && !props.autoTranslate) || !mod) {
+        clearDetailTranslations();
+        return;
+    }
+
+    detailTranslationLoading.value = true;
+    detailTranslationErrorMessage.value = "";
+    abortActiveDetailTranslation();
+    const abortController = new AbortController();
+
+    detailTranslationAbortController = abortController;
+
+    try {
+        const translatedMap = await translateExploreItems({
+            baseUrl: props.aiBaseUrl,
+            apiKey: props.aiApiKey,
+            modelId: props.aiModelId,
+            targetLocale: props.translationLocale,
+            source: props.provider,
+            items: [buildTranslationSourceItem(mod)],
+            abortSignal: abortController.signal,
+        });
+
+        if (currentRequestSequence !== detailTranslationRequestSequence) {
+            return;
+        }
+
+        detailTranslationMap.value = translatedMap;
+        detailManualTranslationVisible.value = mode === "manual";
+    } catch (error: unknown) {
+        if (currentRequestSequence !== detailTranslationRequestSequence) {
+            return;
+        }
+
+        if (abortController.signal.aborted) {
+            detailTranslationErrorMessage.value = "";
+            return;
+        }
+
+        detailTranslationMap.value = {};
+        detailManualTranslationVisible.value = false;
+        detailTranslationErrorMessage.value = getExploreTranslationErrorMessage(
+            error,
+            t("explore.translation.failed"),
+        );
+        console.error("第三方 Mod 详情 AI 翻译失败");
+        console.error(error);
+    } finally {
+        if (currentRequestSequence === detailTranslationRequestSequence) {
+            if (detailTranslationAbortController === abortController) {
+                detailTranslationAbortController = null;
+            }
+
+            detailTranslationLoading.value = false;
+        }
+    }
+}
+
+function getListTranslation(item: IThirdPartyModItem) {
+    return props.autoTranslate || manualTranslationVisible.value
+        ? listTranslationMap.value[getTranslationKey(item)]
+        : null;
+}
+
+function getDetailTranslation(item: IThirdPartyModDetail) {
+    if (
+        !props.autoTranslate &&
+        !manualTranslationVisible.value &&
+        !detailManualTranslationVisible.value
+    ) {
+        return null;
+    }
+
+    const key = getTranslationKey(item);
+    const detailTranslation = detailTranslationMap.value[key];
+    const selectedListTranslation = selectedListItem.value
+        ? listTranslationMap.value[getTranslationKey(selectedListItem.value)]
+        : undefined;
+    const listTranslation =
+        listTranslationMap.value[key] ?? selectedListTranslation;
+
+    if (!detailTranslation) {
+        return listTranslation ?? null;
+    }
+
+    if (!listTranslation) {
+        return detailTranslation;
+    }
+
+    return {
+        ...detailTranslation,
+        title: chooseDetailDisplayTranslation(
+            item.title,
+            detailTranslation.title,
+            selectedListItem.value?.title ?? item.title,
+            listTranslation.title,
+        ),
+        summary: chooseDetailDisplayTranslation(
+            item.summary,
+            detailTranslation.summary,
+            selectedListItem.value?.summary ?? item.summary,
+            listTranslation.summary,
+        ),
+        categories: detailTranslation.categories.length
+            ? detailTranslation.categories
+            : listTranslation.categories,
+        tags: detailTranslation.tags.length
+            ? detailTranslation.tags
+            : listTranslation.tags,
+    };
+}
+
+function getSelectedModTranslation() {
+    return selectedMod.value ? getDetailTranslation(selectedMod.value) : null;
+}
+
+function hasDifferentTranslation(original: string, translated?: string) {
+    const normalizedOriginal = original.trim();
+    const normalizedTranslated = translated?.trim() ?? "";
+
+    return Boolean(
+        normalizedTranslated && normalizedTranslated !== normalizedOriginal,
+    );
+}
+
+function chooseDetailDisplayTranslation(
+    detailOriginal: string,
+    detailTranslated: string,
+    listOriginal: string,
+    listTranslated: string,
+) {
+    if (hasDifferentTranslation(detailOriginal, detailTranslated)) {
+        return detailTranslated;
+    }
+
+    if (hasDifferentTranslation(listOriginal, listTranslated)) {
+        return listTranslated;
+    }
+
+    return detailTranslated || listTranslated;
+}
+
+function getTranslatedText(original: string, translated?: string) {
+    if (!hasDifferentTranslation(original, translated)) {
+        return original;
+    }
+
+    return translated?.trim() ?? original;
+}
+
+function getInlineTranslatedText(original: string, translated?: string) {
+    const displayText = getTranslatedText(original, translated);
+
+    if (!props.showOriginal || displayText === original) {
+        return displayText;
+    }
+
+    return `${displayText} / ${original}`;
+}
+
+function getDisplayTitle(
+    item: IThirdPartyModItem | IThirdPartyModDetail,
+    useDetailTranslation = false,
+) {
+    const translation =
+        useDetailTranslation && "description" in item
+            ? getDetailTranslation(item)
+            : getListTranslation(item);
+
+    return getTranslatedText(item.title, translation?.title);
+}
+
+function shouldShowOriginalTitle(
+    item: IThirdPartyModItem | IThirdPartyModDetail,
+    useDetailTranslation = false,
+) {
+    const translation =
+        useDetailTranslation && "description" in item
+            ? getDetailTranslation(item)
+            : getListTranslation(item);
+
+    return (
+        props.showOriginal &&
+        hasDifferentTranslation(item.title, translation?.title)
+    );
+}
+
+function getDisplaySummary(item: IThirdPartyModDetail) {
+    return getTranslatedText(item.summary, getDetailTranslation(item)?.summary);
+}
+
+function shouldShowOriginalSummary(item: IThirdPartyModDetail) {
+    return (
+        props.showOriginal &&
+        hasDifferentTranslation(
+            item.summary,
+            getDetailTranslation(item)?.summary,
+        )
+    );
+}
+
+function getDisplayCategories(item: IThirdPartyModItem) {
+    const translatedCategories = getListTranslation(item)?.categories ?? [];
+
+    return item.categories.map((category, index) => ({
+        key: category,
+        label: getInlineTranslatedText(category, translatedCategories[index]),
+    }));
+}
+
+function getDisplayTags(
+    item: IThirdPartyModItem | IThirdPartyModDetail,
+    useDetailTranslation = false,
+): ITranslatedBadgeText[] {
+    const translation =
+        useDetailTranslation && "description" in item
+            ? getDetailTranslation(item)
+            : getListTranslation(item);
+    const translatedTags = translation?.tags ?? [];
+
+    return item.tags.map((tag, index) => ({
+        key: tag,
+        label: getInlineTranslatedText(tag, translatedTags[index]),
+    }));
+}
+
+function getSelectedModDescription() {
+    const mod = selectedMod.value;
+
+    if (!mod) {
+        return "";
+    }
+
+    return getTranslatedText(
+        mod.description,
+        getDetailTranslation(mod)?.description,
+    );
+}
+
+function hasSelectedModDescriptionTranslation() {
+    const mod = selectedMod.value;
+
+    if (!mod) {
+        return false;
+    }
+
+    const detailTranslation =
+        detailTranslationMap.value[getTranslationKey(mod)];
+
+    return hasDifferentTranslation(
+        mod.description,
+        detailTranslation?.description,
+    );
+}
+
+function getSelectedModDescriptionFormat(): ThirdPartyDescriptionFormat {
+    const mod = selectedMod.value;
+
+    if (!mod) {
+        return "text";
+    }
+
+    return hasDifferentTranslation(
+        mod.description,
+        getDetailTranslation(mod)?.description,
+    )
+        ? "text"
+        : mod.descriptionFormat;
 }
 
 function toNumber(value?: string | number) {
@@ -858,6 +1443,7 @@ function closeDetail() {
     detailOpen.value = false;
     detailLoading.value = false;
     detailError.value = "";
+    selectedListItem.value = null;
     selectedMod.value = null;
 }
 
@@ -1184,6 +1770,12 @@ function escapeHtml(source: string) {
                         <span v-if="loading">
                             · {{ t("explore.common.updating") }}
                         </span>
+                        <span v-if="translationLoading">
+                            · {{ t("explore.translation.translating") }}
+                        </span>
+                        <span v-else-if="translationErrorMessage">
+                            · {{ translationErrorMessage }}
+                        </span>
                     </div>
                 </div>
 
@@ -1487,7 +2079,7 @@ function escapeHtml(source: string) {
                     <div class="relative aspect-video overflow-hidden bg-muted">
                         <img
                             :src="getCoverUrl(item)"
-                            :alt="item.title"
+                            :alt="getDisplayTitle(item)"
                             class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                             @error="handleCoverError"
                         />
@@ -1503,10 +2095,10 @@ function escapeHtml(source: string) {
                                     {{ providerLabel }}
                                 </Badge>
                                 <Badge
-                                    v-if="item.categories[0]"
+                                    v-if="getDisplayCategories(item)[0]"
                                     class="rounded-full border-white/30 bg-black/25 text-white"
                                 >
-                                    {{ item.categories[0] }}
+                                    {{ getDisplayCategories(item)[0].label }}
                                 </Badge>
                                 <Badge
                                     v-if="
@@ -1532,19 +2124,28 @@ function escapeHtml(source: string) {
                             <div
                                 class="line-clamp-2 text-base font-semibold leading-6"
                             >
+                                {{ getDisplayTitle(item) }}
+                            </div>
+                            <div
+                                v-if="shouldShowOriginalTitle(item)"
+                                class="line-clamp-1 text-xs text-muted-foreground"
+                            >
                                 {{ item.title }}
                             </div>
                             <div
-                                v-if="item.tags.length"
+                                v-if="getDisplayTags(item).length"
                                 class="flex flex-wrap gap-2"
                             >
                                 <Badge
-                                    v-for="tag in item.tags.slice(0, 5)"
-                                    :key="tag"
+                                    v-for="tag in getDisplayTags(item).slice(
+                                        0,
+                                        5,
+                                    )"
+                                    :key="tag.key"
                                     class="rounded-full"
                                     variant="outline"
                                 >
-                                    {{ tag }}
+                                    {{ tag.label }}
                                 </Badge>
                             </div>
                         </div>
@@ -1744,10 +2345,11 @@ function escapeHtml(source: string) {
                 <DialogHeader>
                     <DialogTitle>
                         {{
-                            selectedMod?.title ||
-                            t("explore.detail.providerDetail", {
-                                provider: providerLabel,
-                            })
+                            selectedMod
+                                ? getDisplayTitle(selectedMod, true)
+                                : t("explore.detail.providerDetail", {
+                                      provider: providerLabel,
+                                  })
                         }}
                     </DialogTitle>
                     <DialogDescription>
@@ -1790,7 +2392,7 @@ function escapeHtml(source: string) {
                         >
                             <img
                                 :src="getCoverUrl(selectedMod)"
-                                :alt="selectedMod.title"
+                                :alt="getDisplayTitle(selectedMod, true)"
                                 class="h-full w-full object-cover"
                                 @error="handleCoverError"
                             />
@@ -1865,22 +2467,31 @@ function escapeHtml(source: string) {
 
                             <p class="text-sm leading-7 text-muted-foreground">
                                 {{
-                                    selectedMod.summary ||
+                                    getDisplaySummary(selectedMod) ||
                                     t("explore.detail.noSummary")
                                 }}
                             </p>
+                            <p
+                                v-if="shouldShowOriginalSummary(selectedMod)"
+                                class="text-xs leading-6 text-muted-foreground"
+                            >
+                                {{ selectedMod.summary }}
+                            </p>
 
                             <div
-                                v-if="selectedMod.tags.length"
+                                v-if="getDisplayTags(selectedMod, true).length"
                                 class="flex flex-wrap gap-2"
                             >
                                 <Badge
-                                    v-for="tag in selectedMod.tags"
-                                    :key="tag"
+                                    v-for="tag in getDisplayTags(
+                                        selectedMod,
+                                        true,
+                                    )"
+                                    :key="tag.key"
                                     class="rounded-full"
                                     variant="outline"
                                 >
-                                    {{ tag }}
+                                    {{ tag.label }}
                                 </Badge>
                             </div>
 
@@ -1907,7 +2518,31 @@ function escapeHtml(source: string) {
                     <section
                         class="prose prose-sm max-w-none rounded-2xl border border-border/70 p-5 dark:prose-invert"
                     >
-                        <div v-html="renderedDescription"></div>
+                        <p
+                            v-if="
+                                detailTranslationLoading &&
+                                !hasSelectedModDescriptionTranslation()
+                            "
+                            class="empty-markdown"
+                        >
+                            {{ t("explore.translation.translating") }}
+                        </p>
+                        <p
+                            v-else-if="detailTranslationErrorMessage"
+                            class="empty-markdown"
+                        >
+                            {{ detailTranslationErrorMessage }}
+                        </p>
+                        <div v-else v-html="renderedDescription"></div>
+                        <div
+                            v-if="shouldShowOriginalDescription"
+                            class="mt-5 border-t pt-4"
+                        >
+                            <p class="empty-markdown mb-2">
+                                {{ t("explore.translation.originalText") }}
+                            </p>
+                            <div v-html="originalRenderedDescription"></div>
+                        </div>
                     </section>
 
                     <section class="space-y-3">

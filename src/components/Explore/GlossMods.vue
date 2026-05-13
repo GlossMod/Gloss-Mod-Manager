@@ -25,6 +25,13 @@ import {
     type IGlossGameListItem,
     type IGlossGameModType,
 } from "@/lib/gloss-mod-api";
+import type { AppLocale } from "@/lang/locales";
+import {
+    getExploreTranslationErrorMessage,
+    translateExploreItems,
+    type IExploreTranslationEntry,
+    type IExploreTranslationSourceItem,
+} from "@/lib/explore-ai-translation";
 import { PersistentStore } from "@/lib/persistent-store";
 const DEFAULT_PAGE_SIZE = "12";
 const PAGE_SIZE_OPTIONS = ["12", "20", "36", "48"];
@@ -85,6 +92,38 @@ interface IGlossTypeOption {
     value: string;
 }
 
+interface ITranslatedBadgeText {
+    key: string;
+    label: string;
+}
+
+const props = withDefaults(
+    defineProps<{
+        autoTranslate?: boolean;
+        translationLocale?: AppLocale;
+        showOriginal?: boolean;
+        aiBaseUrl?: string;
+        aiApiKey?: string;
+        aiModelId?: string;
+        manualTranslateToken?: number;
+        cancelTranslateToken?: number;
+    }>(),
+    {
+        autoTranslate: false,
+        translationLocale: "en_US",
+        showOriginal: false,
+        aiBaseUrl: "",
+        aiApiKey: "",
+        aiModelId: "",
+        manualTranslateToken: 0,
+        cancelTranslateToken: 0,
+    },
+);
+
+const emit = defineEmits<{
+    (event: "translationLoadingChange", loading: boolean): void;
+}>();
+
 const manager = useManager();
 const router = useRouter();
 const { t, locale } = useI18n();
@@ -121,6 +160,10 @@ const timeFilterOptions = computed(() => [
 const mods = ref<IGlossExploreMod[]>([]);
 const loading = ref(false);
 const errorMessage = ref("");
+const translationLoading = ref(false);
+const translationErrorMessage = ref("");
+const translationMap = ref<Record<string, IExploreTranslationEntry>>({});
+const manualTranslationVisible = ref(false);
 const queueingModId = ref("");
 const taskSnapshots = ref<Record<string, IAria2RpcTask>>({});
 const glossGameModTypeMap = ref<Record<string, IGlossGameModType[]>>({});
@@ -143,8 +186,10 @@ const followCurrentGame = ref(true);
 // 用请求序号兜住并发搜索，避免慢请求把新结果覆盖掉。
 let requestSequence = 0;
 let gameTypeRequestSequence = 0;
+let translationRequestSequence = 0;
 let refreshTaskSnapshotPending = false;
 let taskSnapshotTimer: ReturnType<typeof globalThis.setInterval> | null = null;
+let translationAbortController: AbortController | null = null;
 
 const currentGame = computed(() => manager.managerGame);
 const currentGameName = computed(
@@ -295,6 +340,23 @@ const downloadStatusMap = computed<Record<string, IExploreDownloadStatus>>(
         );
     },
 );
+const translationRequestKey = computed(() => {
+    return mods.value
+        .map((item) =>
+            JSON.stringify([
+                item.id,
+                item.mods_title,
+                item.mods_desc ?? "",
+                item.mods_type_name,
+                getTags(item),
+                getLatestResource(item)?.mods_resource_name ?? "",
+            ]),
+        )
+        .join("|");
+});
+const shouldShowTranslations = computed(() => {
+    return props.autoTranslate || manualTranslationVisible.value;
+});
 
 watch(
     currentTypeOptions,
@@ -351,6 +413,56 @@ watch(pageSize, () => {
 });
 
 watch(
+    () => [
+        props.autoTranslate,
+        props.translationLocale,
+        props.aiBaseUrl,
+        props.aiApiKey,
+        props.aiModelId,
+        translationRequestKey.value,
+    ],
+    () => {
+        if (props.autoTranslate) {
+            void refreshTranslations("auto");
+            return;
+        }
+
+        clearTranslations();
+    },
+    { immediate: true },
+);
+
+watch(
+    translationLoading,
+    (loading) => {
+        emit("translationLoadingChange", loading);
+    },
+    { immediate: true },
+);
+
+watch(
+    () => props.manualTranslateToken,
+    (token, previousToken) => {
+        if (!token || token === previousToken) {
+            return;
+        }
+
+        void refreshTranslations("manual");
+    },
+);
+
+watch(
+    () => props.cancelTranslateToken,
+    (token, previousToken) => {
+        if (!token || token === previousToken) {
+            return;
+        }
+
+        cancelTranslations();
+    },
+);
+
+watch(
     shouldPollTaskSnapshots,
     (shouldPoll) => {
         if (shouldPoll) {
@@ -380,6 +492,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    cancelTranslations();
+
     if (taskSnapshotTimer !== null) {
         globalThis.clearInterval(taskSnapshotTimer);
         taskSnapshotTimer = null;
@@ -894,6 +1008,172 @@ function getTags(item: IGlossExploreMod) {
     return [] as string[];
 }
 
+function buildTranslationSourceItem(
+    item: IGlossExploreMod,
+): IExploreTranslationSourceItem {
+    return {
+        id: String(item.id),
+        title: item.mods_title,
+        summary: item.mods_desc ?? "",
+        description: item.mods_content ?? "",
+        typeName: item.mods_type_name,
+        tags: getTags(item),
+        resourceName: getLatestResource(item)?.mods_resource_name ?? "",
+    };
+}
+
+type TranslationRefreshMode = "auto" | "manual";
+
+function abortActiveTranslation() {
+    translationAbortController?.abort();
+    translationAbortController = null;
+}
+
+function cancelTranslations() {
+    translationRequestSequence += 1;
+    abortActiveTranslation();
+    translationErrorMessage.value = "";
+    translationLoading.value = false;
+}
+
+function clearTranslations() {
+    cancelTranslations();
+    translationMap.value = {};
+    manualTranslationVisible.value = false;
+}
+
+async function refreshTranslations(mode: TranslationRefreshMode) {
+    const currentRequestSequence = ++translationRequestSequence;
+
+    if ((mode === "auto" && !props.autoTranslate) || mods.value.length === 0) {
+        clearTranslations();
+        return;
+    }
+
+    translationLoading.value = true;
+    translationErrorMessage.value = "";
+    abortActiveTranslation();
+    const abortController = new AbortController();
+
+    translationAbortController = abortController;
+
+    try {
+        const translatedMap = await translateExploreItems({
+            baseUrl: props.aiBaseUrl,
+            apiKey: props.aiApiKey,
+            modelId: props.aiModelId,
+            targetLocale: props.translationLocale,
+            source: "GlossMod",
+            items: mods.value.map(buildTranslationSourceItem),
+            abortSignal: abortController.signal,
+        });
+
+        if (currentRequestSequence !== translationRequestSequence) {
+            return;
+        }
+
+        translationMap.value = translatedMap;
+        manualTranslationVisible.value = mode === "manual";
+    } catch (error: unknown) {
+        if (currentRequestSequence !== translationRequestSequence) {
+            return;
+        }
+
+        if (abortController.signal.aborted) {
+            translationErrorMessage.value = "";
+            return;
+        }
+
+        translationMap.value = {};
+        manualTranslationVisible.value = false;
+        translationErrorMessage.value = getExploreTranslationErrorMessage(
+            error,
+            t("explore.translation.failed"),
+        );
+        console.error("Gloss Mods AI 翻译失败");
+        console.error(error);
+    } finally {
+        if (currentRequestSequence === translationRequestSequence) {
+            if (translationAbortController === abortController) {
+                translationAbortController = null;
+            }
+
+            translationLoading.value = false;
+        }
+    }
+}
+
+function getTranslation(item: IGlossExploreMod) {
+    return shouldShowTranslations.value
+        ? translationMap.value[String(item.id)]
+        : null;
+}
+
+function hasDifferentTranslation(original: string, translated?: string) {
+    const normalizedOriginal = original.trim();
+    const normalizedTranslated = translated?.trim() ?? "";
+
+    return Boolean(
+        normalizedTranslated && normalizedTranslated !== normalizedOriginal,
+    );
+}
+
+function getTranslatedText(original: string, translated?: string) {
+    if (!hasDifferentTranslation(original, translated)) {
+        return original;
+    }
+
+    return translated?.trim() ?? original;
+}
+
+function getInlineTranslatedText(original: string, translated?: string) {
+    const displayText = getTranslatedText(original, translated);
+
+    if (!props.showOriginal || displayText === original) {
+        return displayText;
+    }
+
+    return `${displayText} / ${original}`;
+}
+
+function getDisplayTitle(item: IGlossExploreMod) {
+    return getTranslatedText(item.mods_title, getTranslation(item)?.title);
+}
+
+function shouldShowOriginalTitle(item: IGlossExploreMod) {
+    return (
+        props.showOriginal &&
+        hasDifferentTranslation(item.mods_title, getTranslation(item)?.title)
+    );
+}
+
+function getDisplayTypeName(item: IGlossExploreMod) {
+    return getInlineTranslatedText(
+        item.mods_type_name,
+        getTranslation(item)?.typeName,
+    );
+}
+
+function getDisplayTags(item: IGlossExploreMod): ITranslatedBadgeText[] {
+    const translatedTags = getTranslation(item)?.tags ?? [];
+
+    return getTags(item).map((tag, index) => ({
+        key: tag,
+        label: getInlineTranslatedText(tag, translatedTags[index]),
+    }));
+}
+
+function getDisplayResourceName(item: IGlossExploreMod) {
+    const resourceName =
+        getLatestResource(item)?.mods_resource_name ||
+        t("explore.resources.noResourceName");
+
+    return getInlineTranslatedText(
+        resourceName,
+        getTranslation(item)?.resourceName,
+    );
+}
+
 function resetFilters() {
     searchKeyword.value = "";
     tagKeyword.value = "";
@@ -1051,6 +1331,12 @@ function goToPage(targetPage: number) {
                         </span>
                         <span v-if="loading">
                             · {{ t("explore.common.updating") }}
+                        </span>
+                        <span v-if="translationLoading">
+                            · {{ t("explore.translation.translating") }}
+                        </span>
+                        <span v-else-if="translationErrorMessage">
+                            · {{ translationErrorMessage }}
                         </span>
                     </div>
                 </div>
@@ -1362,7 +1648,7 @@ function goToPage(targetPage: number) {
                         <img
                             :src="getCoverUrl(item)"
                             :data-fallback-src="getFallbackCoverUrl(item)"
-                            :alt="item.mods_title"
+                            :alt="getDisplayTitle(item)"
                             class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                             @error="handleCoverError"
                         />
@@ -1380,7 +1666,7 @@ function goToPage(targetPage: number) {
                                 <Badge
                                     class="rounded-full border-white/30 bg-black/25 text-white"
                                 >
-                                    {{ item.mods_type_name }}
+                                    {{ getDisplayTypeName(item) }}
                                 </Badge>
                                 <Badge
                                     class="rounded-full border-white/30 bg-black/25 text-white"
@@ -1408,19 +1694,28 @@ function goToPage(targetPage: number) {
                             <div
                                 class="line-clamp-2 text-base font-semibold leading-6"
                             >
+                                {{ getDisplayTitle(item) }}
+                            </div>
+                            <div
+                                v-if="shouldShowOriginalTitle(item)"
+                                class="line-clamp-1 text-xs text-muted-foreground"
+                            >
                                 {{ item.mods_title }}
                             </div>
                             <div
                                 class="flex flex-wrap gap-2"
-                                v-if="getTags(item).length"
+                                v-if="getDisplayTags(item).length"
                             >
                                 <Badge
-                                    v-for="tag in getTags(item).slice(0, 5)"
-                                    :key="tag"
+                                    v-for="tag in getDisplayTags(item).slice(
+                                        0,
+                                        5,
+                                    )"
+                                    :key="tag.key"
                                     class="rounded-full"
                                     variant="outline"
                                 >
-                                    {{ tag }}
+                                    {{ tag.label }}
                                 </Badge>
                             </div>
                         </div>
@@ -1505,11 +1800,7 @@ function goToPage(targetPage: number) {
                                 </span>
                             </div>
                             <div class="mt-2 line-clamp-1">
-                                {{
-                                    getLatestResource(item)
-                                        ?.mods_resource_name ||
-                                    t("explore.resources.noResourceName")
-                                }}
+                                {{ getDisplayResourceName(item) }}
                             </div>
                         </div>
 

@@ -122,6 +122,7 @@ declare module 'vue' {
     IconRefreshCcw: typeof import('lucide-vue-next')['RefreshCcw']
     IconRefreshCw: typeof import('lucide-vue-next')['RefreshCw']
     IconSearch: typeof import('lucide-vue-next')['Search']
+    IconSettings: typeof import('lucide-vue-next')['Settings']
     IconSettings2: typeof import('lucide-vue-next')['Settings2']
     IconSquarePen: typeof import('lucide-vue-next')['SquarePen']
     IconTrash: typeof import('lucide-vue-next')['Trash']

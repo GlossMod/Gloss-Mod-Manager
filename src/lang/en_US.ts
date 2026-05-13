@@ -161,6 +161,18 @@ const lang = {
             nexusTag: "Nexus tag",
             allTags: "All tags",
         },
+        translation: {
+            autoTranslate: "Auto translate",
+            manualTranslate: "Translate now",
+            cancel: "Cancel",
+            targetLanguage: "Translate to",
+            chooseLanguage: "Choose language",
+            showOriginal: "Show original",
+            configureAi: "Configure AI",
+            translating: "AI is translating",
+            failed: "AI translation failed.",
+            originalText: "Original text",
+        },
         summary: {
             totalResults: "Results",
             currentPage: "Page",
