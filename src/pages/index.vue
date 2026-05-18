@@ -14,6 +14,7 @@ import {
     ArrowRight,
     Globe,
     Ellipsis,
+    Heart,
 } from "lucide-vue-next";
 
 import {
@@ -88,6 +89,17 @@ useSeoMeta({
                             阅读文档
                             <ArrowRight class="ml-2 h-5 w-5" />
                         </NuxtLink>
+                    </Button>
+                    <Button
+                        size="lg"
+                        variant="outline"
+                        as-child
+                        class="w-full sm:w-auto h-12 px-8 text-base"
+                    >
+                        <a href="https://sponsor.aoe.top/" target="_blank">
+                            赞助项目
+                            <Heart class="ml-2 h-5 w-5 text-red-500" />
+                        </a>
                     </Button>
                 </div>
             </div>
