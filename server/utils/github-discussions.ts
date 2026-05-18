@@ -77,6 +77,7 @@ export interface NewGameRequest {
     gameName: string;
     sourceUrl: string;
     modUrl: string;
+    additionalInfo?: string;
     backlink?: string;
 }
 
@@ -352,6 +353,7 @@ export const parseNewGameRequest = (body: unknown): NewGameRequest => {
         gameName: readString(payload.gameName).replace(/\s+/g, " "),
         sourceUrl: readString(payload.sourceUrl),
         modUrl: readString(payload.modUrl),
+        additionalInfo: readString(payload.additionalInfo),
         backlink: readString(payload.backlink),
     };
 
@@ -441,11 +443,8 @@ export const createNewGameDiscussionBody = (request: NewGameRequest) =>
         `游戏名称：${request.gameName}`,
         `游戏官网/商店/Steam 地址：${request.sourceUrl}`,
         `Mod 地址：${request.modUrl}`,
-        "",
-        "补充信息：欢迎在评论区追加适配规则、安装目录结构、测试版本或已有 Mod 生态。",
-    ]
-        .filter(Boolean)
-        .join("\n");
+        `补充信息：${request.additionalInfo || "无"}`,
+    ].join("\n");
 
 export const createNewGameDiscussion = async (
     request: NewGameRequest,

@@ -89,11 +89,13 @@ const initialRequest = normalizeRequest({
     gameName: readQueryValue(route.query.game),
     sourceUrl: readQueryValue(route.query.source),
     modUrl: readQueryValue(route.query.mod),
+    additionalInfo: readQueryValue(route.query.info),
 });
 const hasInitialDraft = Boolean(
     initialRequest.gameName ||
     initialRequest.sourceUrl ||
-    initialRequest.modUrl,
+    initialRequest.modUrl ||
+    initialRequest.additionalInfo,
 );
 
 const discussionsStore = useNewGameDiscussionsStore();
@@ -112,7 +114,10 @@ const isRequestDialogOpen = ref(hasInitialDraft);
 const currentDraft = computed(() => {
     const request = normalizeRequest(form);
 
-    return request.gameName || request.sourceUrl || request.modUrl
+    return request.gameName ||
+        request.sourceUrl ||
+        request.modUrl ||
+        request.additionalInfo
         ? request
         : null;
 });
@@ -131,6 +136,14 @@ const requestFields = computed(() => [
         value: previewRequest.value?.sourceUrl || "",
     },
     { label: "Mod 地址", value: previewRequest.value?.modUrl || "" },
+    ...(previewRequest.value?.additionalInfo
+        ? [
+              {
+                  label: "补充信息",
+                  value: previewRequest.value.additionalInfo,
+              },
+          ]
+        : []),
 ]);
 
 const draftBackLink = computed(() => {
@@ -257,6 +270,7 @@ const resetRequest = async () => {
     form.gameName = "";
     form.sourceUrl = "";
     form.modUrl = "";
+    form.additionalInfo = "";
     formError.value = "";
     pageMessage.value = "";
     isRequestDialogOpen.value = false;
@@ -531,6 +545,21 @@ onMounted(async () => {
                                             v-model="form.modUrl"
                                             type="url"
                                             placeholder="https://www.nexusmods.com/..."
+                                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        />
+                                    </div>
+                                    <div class="space-y-2">
+                                        <label
+                                            for="additional-info"
+                                            class="text-sm font-medium"
+                                        >
+                                            补充信息（选填）
+                                        </label>
+                                        <input
+                                            id="additional-info"
+                                            v-model="form.additionalInfo"
+                                            type="text"
+                                            placeholder="例如：适配规则、安装目录结构、测试版本或已有 Mod 生态"
                                             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         />
                                     </div>

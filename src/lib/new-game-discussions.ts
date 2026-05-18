@@ -2,6 +2,7 @@ export interface GameRequest {
     gameName: string;
     sourceUrl: string;
     modUrl: string;
+    additionalInfo?: string;
 }
 
 export interface GitHubViewer {
@@ -91,6 +92,7 @@ export const normalizeRequest = (request: GameRequest): GameRequest => ({
     gameName: request.gameName.trim().replace(/\s+/g, " "),
     sourceUrl: request.sourceUrl.trim(),
     modUrl: request.modUrl.trim(),
+    additionalInfo: request.additionalInfo?.trim() || "",
 });
 
 export const isHttpUrl = (value: string) => {
@@ -115,6 +117,10 @@ export const buildNewGamePageQuery = (request: GameRequest | null) => {
 
     if (request?.modUrl) {
         query.mod = request.modUrl;
+    }
+
+    if (request?.additionalInfo) {
+        query.info = request.additionalInfo;
     }
 
     return query;
