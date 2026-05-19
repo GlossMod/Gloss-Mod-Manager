@@ -81,6 +81,13 @@ interface ITranslatedBadgeText {
     label: string;
 }
 
+type ThirdPartySortKey = "default" | "updatedAt" | "createdAt" | "downloads";
+
+interface IThirdPartySortOption {
+    label: string;
+    value: ThirdPartySortKey;
+}
+
 const props = withDefaults(
     defineProps<{
         provider: ThirdPartyProvider;
@@ -135,6 +142,12 @@ const markdownParser = new MarkdownIt({
 }).use(markdownItAnchor, {
     level: [1, 2, 3],
 });
+const sortOptions = computed<IThirdPartySortOption[]>(() => [
+    { label: t("explore.filters.sortDefault"), value: "default" },
+    { label: t("explore.filters.sortUpdatedAt"), value: "updatedAt" },
+    { label: t("explore.filters.sortCreatedAt"), value: "createdAt" },
+    { label: t("explore.filters.sortDownloads"), value: "downloads" },
+]);
 
 const mods = ref<IThirdPartyModItem[]>([]);
 const nexusFacets = ref<IThirdPartyModFacets>(createEmptyThirdPartyModFacets());
@@ -150,6 +163,7 @@ const isFiltersExpanded = ref(false);
 const totalCount = ref(0);
 const totalPages = ref(0);
 const searchKeyword = ref("");
+const selectedSort = ref<ThirdPartySortKey>("default");
 const selectedNexusCategory = ref(NEXUS_FACET_ALL_VALUE);
 const selectedNexusLanguage = ref(NEXUS_FACET_ALL_VALUE);
 const selectedNexusTag = ref(NEXUS_FACET_ALL_VALUE);
@@ -397,6 +411,15 @@ watch(pageSize, () => {
     void fetchMods();
 });
 
+watch(selectedSort, () => {
+    if (page.value !== 1) {
+        page.value = 1;
+        return;
+    }
+
+    void fetchMods();
+});
+
 watch(
     () => [
         props.autoTranslate,
@@ -575,6 +598,7 @@ async function fetchMods() {
                 page: page.value,
                 pageSize: Number(pageSize.value),
                 searchText: searchKeyword.value.trim(),
+                sort: selectedSort.value,
                 nexusModsFacets: getNexusModsFacetSelection(),
             },
             settings.nexusModsUser,
@@ -1474,6 +1498,7 @@ function getNexusModsFacetSelection(): INexusModsFacetSelection | undefined {
 function resetFilters() {
     searchKeyword.value = "";
     pageSize.value = DEFAULT_PAGE_SIZE;
+    selectedSort.value = "default";
     selectedNexusCategory.value = NEXUS_FACET_ALL_VALUE;
     selectedNexusLanguage.value = NEXUS_FACET_ALL_VALUE;
     selectedNexusTag.value = NEXUS_FACET_ALL_VALUE;
@@ -1834,7 +1859,7 @@ function escapeHtml(source: string) {
             </div>
 
             <div v-show="isFiltersExpanded" class="space-y-3 pt-3 border-t">
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                     <div>
                         <div class="text-sm font-medium">
                             {{ t("explore.filters.pageSize") }}
@@ -1858,6 +1883,30 @@ function escapeHtml(source: string) {
                                             count: item,
                                         })
                                     }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.sort") }}
+                        </div>
+                        <Select v-model="selectedSort">
+                            <SelectTrigger class="mt-2 w-full">
+                                <SelectValue
+                                    :placeholder="
+                                        t('explore.filters.chooseSort')
+                                    "
+                                />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="item in sortOptions"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ item.label }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
@@ -2069,7 +2118,7 @@ function escapeHtml(source: string) {
             </section>
 
             <section
-                class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
             >
                 <article
                     v-for="item in mods"

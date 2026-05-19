@@ -9,10 +9,17 @@ export type ThirdPartyProvider =
 
 export type ThirdPartyDescriptionFormat = "markdown" | "html" | "text";
 
+export type ThirdPartyListSortKey =
+    | "default"
+    | "updatedAt"
+    | "createdAt"
+    | "downloads";
+
 export interface IThirdPartyListQuery {
     page: number;
     pageSize: number;
     searchText: string;
+    sort: ThirdPartyListSortKey;
     nexusModsFacets?: INexusModsFacetSelection;
 }
 
@@ -405,6 +412,166 @@ function normalizePageSize(pageSize: number) {
     return Math.max(1, Math.round(pageSize || 1));
 }
 
+function toTimestamp(value?: string | number | null) {
+    if (!value && value !== 0) {
+        return 0;
+    }
+
+    const parsed = new Date(value).getTime();
+
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareThirdPartyListItems(
+    left: IThirdPartyModItem,
+    right: IThirdPartyModItem,
+    sortKey: Exclude<ThirdPartyListSortKey, "default">,
+) {
+    switch (sortKey) {
+        case "updatedAt":
+            return toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt);
+        case "createdAt":
+            return toTimestamp(right.createdAt) - toTimestamp(left.createdAt);
+        case "downloads":
+            return (right.downloads ?? 0) - (left.downloads ?? 0);
+    }
+}
+
+function sortThirdPartyListItems(
+    items: IThirdPartyModItem[],
+    sortKey: Exclude<ThirdPartyListSortKey, "default">,
+) {
+    return items
+        .map((item, index) => ({
+            item,
+            index,
+        }))
+        .sort((left, right) => {
+            const result = compareThirdPartyListItems(
+                left.item,
+                right.item,
+                sortKey,
+            );
+
+            return result !== 0 ? result : left.index - right.index;
+        })
+        .map(({ item }) => item);
+}
+
+function paginateThirdPartyItems(
+    items: IThirdPartyModItem[],
+    query: IThirdPartyListQuery,
+) {
+    const page = normalizePage(query.page);
+    const pageSize = normalizePageSize(query.pageSize);
+    const start = (page - 1) * pageSize;
+
+    return {
+        items: items.slice(start, start + pageSize),
+        page,
+        pageSize,
+        totalCount: items.length,
+        totalPages: items.length > 0 ? Math.ceil(items.length / pageSize) : 0,
+    } satisfies Omit<IThirdPartyModListResult, "facets">;
+}
+
+function getNexusModsSortVariables(query: IThirdPartyListQuery) {
+    switch (query.sort) {
+        case "createdAt":
+            return [{ createdAt: { direction: "DESC" as const } }];
+        case "downloads":
+            return [{ downloads: { direction: "DESC" as const } }];
+        case "updatedAt":
+        case "default":
+        default:
+            return [{ updatedAt: { direction: "DESC" as const } }];
+    }
+}
+
+function getModIoSortValue(query: IThirdPartyListQuery) {
+    switch (query.sort) {
+        case "updatedAt":
+            return "date_updated";
+        case "createdAt":
+            return "date_live";
+        case "downloads":
+        case "default":
+        default:
+            return "downloads";
+    }
+}
+
+function getCurseForgeSortParams(query: IThirdPartyListQuery) {
+    switch (query.sort) {
+        case "createdAt":
+            return {
+                sortField: "11",
+                sortOrder: "desc",
+            };
+        case "downloads":
+            return {
+                sortField: "6",
+                sortOrder: "desc",
+            };
+        case "updatedAt":
+        case "default":
+        default:
+            return {
+                sortField: "3",
+                sortOrder: "desc",
+            };
+    }
+}
+
+async function fetchAllGameBananaMods(gameId: number, searchText: string) {
+    const items: IGameBananaMod[] = [];
+    const pageSize = 200;
+    let page = 1;
+    let totalCount = 0;
+
+    while (page === 1 || items.length < totalCount) {
+        const params = new URLSearchParams({
+            _nPage: String(page),
+            _nPerpage: String(pageSize),
+            _csvModelInclusions: "Mod",
+            "_aFilters[Generic_Game]": String(gameId),
+        });
+
+        if (normalizeText(searchText)) {
+            params.set(
+                "_aFilters[Generic_Name]",
+                `contains,${normalizeText(searchText)}`,
+            );
+        }
+
+        const response = await httpFetch(
+            `${GAMEBANANA_BASE_URL}/Mod/Index?${params.toString()}`,
+            {
+                method: "GET",
+                headers: {
+                    Accept: "application/json",
+                },
+            },
+        );
+        const payload = (await response.json()) as IGameBananaListResponse;
+
+        if (!response.ok || !Array.isArray(payload._aRecords)) {
+            throw new Error("获取 GameBanana 列表失败。");
+        }
+
+        items.push(...payload._aRecords);
+        totalCount = payload._aMetadata?._nRecordCount ?? items.length;
+
+        if (!payload._aRecords.length) {
+            break;
+        }
+
+        page += 1;
+    }
+
+    return items;
+}
+
 function buildIsoDate(input?: string | number | null) {
     if (!input && input !== 0) {
         return "";
@@ -755,7 +922,7 @@ async function fetchNexusModsList(
         // facetsData 是 NexusMods 返回的列表级聚合分类，用于驱动分类筛选。
         facets: buildNexusModsFacetVariables(query.nexusModsFacets),
         offset: (page - 1) * pageSize,
-        sort: [{ updatedAt: { direction: "DESC" } }],
+        sort: getNexusModsSortVariables(query),
         filter: {
             gameDomainName: {
                 op: "EQUALS",
@@ -993,28 +1160,17 @@ async function fetchThunderstoreList(
                 .toLowerCase();
 
             return searchSource.includes(normalizedSearch);
-        })
-        .sort((left, right) => {
-            return (
-                (right.latest?.downloads ?? 0) - (left.latest?.downloads ?? 0)
-            );
         });
 
-    const page = normalizePage(query.page);
-    const pageSize = normalizePageSize(query.pageSize);
-    const start = (page - 1) * pageSize;
-    const items = filtered.slice(start, start + pageSize).map((item) => {
-        return normalizeThunderstoreMod(item);
-    });
+    const normalizedItems = filtered.map((item) =>
+        normalizeThunderstoreMod(item),
+    );
+    const sortedItems = sortThirdPartyListItems(
+        normalizedItems,
+        query.sort === "default" ? "downloads" : query.sort,
+    );
 
-    return {
-        items,
-        page,
-        pageSize,
-        totalCount: filtered.length,
-        totalPages:
-            filtered.length > 0 ? Math.ceil(filtered.length / pageSize) : 0,
-    } satisfies IThirdPartyModListResult;
+    return paginateThirdPartyItems(sortedItems, query);
 }
 
 function normalizeThunderstoreMod(item: IThunderstoreMod) {
@@ -1137,7 +1293,7 @@ async function fetchModIoList(
     const params = new URLSearchParams({
         api_key: MOD_IO_KEY,
         maturity_option: "0",
-        _sort: "downloads",
+        _sort: getModIoSortValue(query),
         _limit: String(normalizePageSize(query.pageSize)),
         _offset: String(
             (normalizePage(query.page) - 1) * normalizePageSize(query.pageSize),
@@ -1317,9 +1473,11 @@ async function fetchCurseForgeList(
         throw new Error("未读取到 CURSE_FORGE_KEY，请检查 .env 配置。");
     }
 
+    const sortParams = getCurseForgeSortParams(query);
     const params = new URLSearchParams({
         gameId: String(gameId),
-        sortField: "3",
+        sortField: sortParams.sortField,
+        sortOrder: sortParams.sortOrder,
         pageSize: String(normalizePageSize(query.pageSize)),
         index: String(
             (normalizePage(query.page) - 1) * normalizePageSize(query.pageSize),
@@ -1472,6 +1630,19 @@ async function fetchGameBananaList(
     const gameId = Number(game.gamebanana ?? 0);
     if (!gameId) {
         return emptyListResult(query);
+    }
+
+    if (query.sort !== "default") {
+        const allItems = await fetchAllGameBananaMods(gameId, query.searchText);
+        const normalizedItems = allItems.map((item) => {
+            return normalizeGameBananaMod(item);
+        });
+        const sortedItems = sortThirdPartyListItems(
+            normalizedItems,
+            query.sort,
+        );
+
+        return paginateThirdPartyItems(sortedItems, query);
     }
 
     const params = new URLSearchParams({

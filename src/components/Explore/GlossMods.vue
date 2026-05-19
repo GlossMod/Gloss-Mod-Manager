@@ -92,6 +92,19 @@ interface IGlossTypeOption {
     value: string;
 }
 
+type GlossSortKey =
+    | "default"
+    | "updatedAt"
+    | "createdAt"
+    | "downloads"
+    | "views"
+    | "favorites";
+
+interface IGlossSortOption {
+    label: string;
+    value: GlossSortKey;
+}
+
 interface ITranslatedBadgeText {
     key: string;
     label: string;
@@ -156,6 +169,14 @@ const timeFilterOptions = computed(() => [
     { label: t("explore.filters.lastMonth"), value: "3" },
     { label: t("explore.filters.lastThreeMonths"), value: "4" },
 ]);
+const sortOptions = computed<IGlossSortOption[]>(() => [
+    { label: t("explore.filters.sortDefault"), value: "default" },
+    { label: t("explore.filters.sortUpdatedAt"), value: "updatedAt" },
+    { label: t("explore.filters.sortCreatedAt"), value: "createdAt" },
+    { label: t("explore.filters.sortDownloads"), value: "downloads" },
+    { label: t("explore.filters.sortViews"), value: "views" },
+    { label: t("explore.filters.sortFavorites"), value: "favorites" },
+]);
 
 const mods = ref<IGlossExploreMod[]>([]);
 const loading = ref(false);
@@ -179,6 +200,7 @@ const tagKeyword = ref("");
 const selectedOriginal = ref("all");
 const selectedTime = ref("all");
 const selectedType = ref("all");
+const selectedSort = ref<GlossSortKey>("default");
 const onlySupportGmm = ref(false);
 const onlyLocal = ref(false);
 const followCurrentGame = ref(true);
@@ -244,6 +266,27 @@ const parsedTags = computed(() =>
         .map((item) => item.trim())
         .filter(Boolean),
 );
+const sortedMods = computed(() => {
+    if (mods.value.length <= 1 || selectedSort.value === "default") {
+        return mods.value;
+    }
+
+    return mods.value
+        .map((item, index) => ({
+            item,
+            index,
+        }))
+        .sort((left, right) => {
+            const result = compareGlossMods(
+                left.item,
+                right.item,
+                selectedSort.value,
+            );
+
+            return result !== 0 ? result : left.index - right.index;
+        })
+        .map(({ item }) => item);
+});
 const hasActiveFilters = computed(() => {
     return Boolean(
         searchKeyword.value.trim() ||
@@ -670,6 +713,48 @@ function toNumber(value?: string | number) {
     const normalized = Number(value ?? 0);
 
     return Number.isFinite(normalized) ? normalized : 0;
+}
+
+function toTimestamp(value?: string) {
+    if (!value) {
+        return 0;
+    }
+
+    const timestamp = new Date(value).getTime();
+
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function compareGlossMods(
+    left: IGlossExploreMod,
+    right: IGlossExploreMod,
+    sortKey: GlossSortKey,
+) {
+    switch (sortKey) {
+        case "updatedAt":
+            return (
+                toTimestamp(right.mods_updateTime) -
+                toTimestamp(left.mods_updateTime)
+            );
+        case "createdAt":
+            return (
+                toTimestamp(right.mods_createTime) -
+                toTimestamp(left.mods_createTime)
+            );
+        case "downloads":
+            return (
+                toNumber(right.mods_download_cnt) -
+                toNumber(left.mods_download_cnt)
+            );
+        case "views":
+            return (
+                toNumber(right.mods_click_cnt) - toNumber(left.mods_click_cnt)
+            );
+        case "favorites":
+            return toNumber(right.mods_mark_cnt) - toNumber(left.mods_mark_cnt);
+        default:
+            return 0;
+    }
 }
 
 function formatDate(value?: string) {
@@ -1180,6 +1265,7 @@ function resetFilters() {
     selectedOriginal.value = "all";
     selectedTime.value = "all";
     selectedType.value = "all";
+    selectedSort.value = "default";
     onlySupportGmm.value = false;
     onlyLocal.value = false;
     followCurrentGame.value = true;
@@ -1396,7 +1482,7 @@ function goToPage(targetPage: number) {
             </div>
 
             <div v-show="isFiltersExpanded" class="space-y-3 pt-3 border-t">
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                     <div>
                         <div class="text-sm font-medium">
                             {{ t("explore.filters.tag") }}
@@ -1506,6 +1592,30 @@ function goToPage(targetPage: number) {
                                             count: item,
                                         })
                                     }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <div class="text-sm font-medium">
+                            {{ t("explore.filters.sort") }}
+                        </div>
+                        <Select v-model="selectedSort">
+                            <SelectTrigger class="mt-2 w-full">
+                                <SelectValue
+                                    :placeholder="
+                                        t('explore.filters.chooseSort')
+                                    "
+                                />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="item in sortOptions"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ item.label }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
@@ -1638,9 +1748,11 @@ function goToPage(targetPage: number) {
                 </div>
             </section>
 
-            <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <section
+                class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
+            >
                 <article
-                    v-for="item in mods"
+                    v-for="item in sortedMods"
                     :key="item.id"
                     class="group overflow-hidden rounded-2xl border bg-card transition-colors hover:border-primary/40"
                 >
