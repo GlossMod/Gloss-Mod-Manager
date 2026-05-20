@@ -7,7 +7,8 @@ export interface IAiChatBundledSkill {
     sourcePath: string;
 }
 
-const rawSkillModules = import.meta.glob("../../public/skills/**/SKILL.md", {
+// 技能说明需要被打包为内置文本，放在 src 下才能被 Vite 以 raw 方式导入。
+const rawSkillModules = import.meta.glob("../skills/**/SKILL.md", {
     query: "?raw",
     import: "default",
     eager: true,
@@ -72,7 +73,7 @@ function splitSkillFile(content: string) {
 }
 
 function resolveSkillId(modulePath: string) {
-    const match = modulePath.match(/public\/skills\/([^/]+)\/SKILL\.md$/u);
+    const match = modulePath.match(/skills\/([^/]+)\/SKILL\.md$/u);
 
     return match?.[1] ?? modulePath;
 }
@@ -90,7 +91,7 @@ const bundledSkills = Object.entries(rawSkillModules)
             description,
             argumentHint: frontmatter["argument-hint"]?.trim() || undefined,
             body,
-            sourcePath: `public/skills/${id}/SKILL.md`,
+            sourcePath: `src/skills/${id}/SKILL.md`,
         } satisfies IAiChatBundledSkill;
     })
     .sort((left, right) => {

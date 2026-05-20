@@ -120,7 +120,25 @@ const list = [
                 <CardTitle>AI {{ $t("home.partners") }}</CardTitle>
             </CardHeader>
             <CardContent>
-                <div class="text-sm text-muted-foreground">
+                <div
+                    class="grid grid-cols-4 items-center gap-4 justify-items-center links"
+                >
+                    <a
+                        href="https://one.gloscai.com/"
+                        target="_blank"
+                        class="flex w-full items-center justify-evenly"
+                    >
+                        <img
+                            src="https://assets-mod.3dmgame.com/static/upload/mod/202605/MOD6a0bd12f001d1.png@webp"
+                            alt="Glosc AI One"
+                            class="h-25"
+                        />
+                        <h3 class="text-xl font-semibold tracking-tight">
+                            Glosc AI One
+                        </h3>
+                    </a>
+                </div>
+                <div class="mt-2 text-sm text-muted-foreground">
                     AI 合作方招募中, 如果您是供应商, 并对此项目感兴趣, 欢迎
                     <a
                         href="https://gmm.aoe.top/docs/Cooperation"

@@ -23,6 +23,7 @@ import {
 } from "lucide-vue-next";
 import MarkdownIt from "markdown-it";
 import type { FileUIPart } from "ai";
+import type { ComponentPublicInstance } from "vue";
 import { storeToRefs } from "pinia";
 import {
     type AiChatMcpServerId,
@@ -95,13 +96,25 @@ const skillList = getBundledAiChatSkills();
 
 const draft = ref("");
 const pendingFiles = ref<IAiChatPendingFile[]>([]);
+const chatCard = ref<HTMLElement | ComponentPublicInstance | null>(null);
 const imageInput = ref<HTMLInputElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const messagesViewport = ref<HTMLElement | null>(null);
+const modelPickerOpen = ref(false);
+const modelSearchKeyword = ref("");
+const composerHeight = ref(220);
+const resizingComposer = ref(false);
 const showToolsDialog = ref(false);
 const showSkillsDialog = ref(false);
 const editingMessageId = ref("");
 const editingText = ref("");
+const modelNameCollator = new Intl.Collator("zh-CN", {
+    numeric: true,
+    sensitivity: "base",
+});
+const minComposerHeight = 180;
+const minMessagesHeight = 240;
+let activeResizePointerId = 0;
 
 const isGenerating = computed(() => {
     return status.value === "submitted" || status.value === "streaming";
@@ -121,13 +134,48 @@ const visibleErrorMessage = computed(() => {
     );
 });
 
-const modelSelectValue = computed<string>({
-    get: () => {
-        return selectedModelId.value;
-    },
-    set: (value) => {
-        void applyModel(value);
-    },
+// 在页面层做模型排序和搜索，避免把纯展示逻辑塞进 store。
+const sortedModelList = computed(() => {
+    return [...modelList.value].sort((leftModel, rightModel) => {
+        const leftName = leftModel.name.trim() || leftModel.id;
+        const rightName = rightModel.name.trim() || rightModel.id;
+        const nameCompare = modelNameCollator.compare(leftName, rightName);
+
+        if (nameCompare !== 0) {
+            return nameCompare;
+        }
+
+        return modelNameCollator.compare(leftModel.id, rightModel.id);
+    });
+});
+
+const filteredModelList = computed(() => {
+    const normalizedKeyword = modelSearchKeyword.value
+        .trim()
+        .toLocaleLowerCase();
+
+    if (!normalizedKeyword) {
+        return sortedModelList.value;
+    }
+
+    return sortedModelList.value.filter((model) => {
+        return (
+            model.name.toLocaleLowerCase().includes(normalizedKeyword) ||
+            model.id.toLocaleLowerCase().includes(normalizedKeyword)
+        );
+    });
+});
+
+const selectedModelLabel = computed(() => {
+    const modelId = selectedModelId.value.trim();
+
+    return resolveModelLabel(modelId) || "切换模型";
+});
+
+const composerStyle = computed(() => {
+    return {
+        height: `${composerHeight.value}px`,
+    };
 });
 
 const activeConversation = computed(() => {
@@ -161,6 +209,8 @@ const localServerStatusMeta = computed(() => {
 });
 
 onMounted(async () => {
+    window.addEventListener("resize", syncComposerHeightWithinBounds);
+
     try {
         if (!initialized.value) {
             await store.initialize();
@@ -181,7 +231,13 @@ onMounted(async () => {
         ElMessage.error(getErrorMessage(error, "初始化 AI 对话失败。"));
     } finally {
         await scrollToBottom();
+        syncComposerHeightWithinBounds();
     }
+});
+
+onUnmounted(() => {
+    stopComposerResize();
+    window.removeEventListener("resize", syncComposerHeightWithinBounds);
 });
 
 watch(
@@ -190,6 +246,12 @@ watch(
         void scrollToBottom();
     },
 );
+
+watch(modelPickerOpen, (open) => {
+    if (!open) {
+        modelSearchKeyword.value = "";
+    }
+});
 
 async function scrollToBottom() {
     await nextTick();
@@ -200,6 +262,102 @@ async function scrollToBottom() {
     }
 
     viewport.scrollTop = viewport.scrollHeight;
+}
+
+function getChatCardElement() {
+    const cardRef = chatCard.value;
+
+    if (!cardRef) {
+        return null;
+    }
+
+    if (cardRef instanceof HTMLElement) {
+        return cardRef;
+    }
+
+    return "$el" in cardRef && cardRef.$el instanceof HTMLElement
+        ? cardRef.$el
+        : null;
+}
+
+function getComposerHeightBounds() {
+    const cardElement = getChatCardElement();
+
+    if (!cardElement) {
+        return {
+            min: minComposerHeight,
+            max: minComposerHeight,
+        };
+    }
+
+    const cardRect = cardElement.getBoundingClientRect();
+
+    return {
+        min: minComposerHeight,
+        max: Math.max(minComposerHeight, cardRect.height - minMessagesHeight),
+    };
+}
+
+function clampComposerHeight(nextHeight: number) {
+    const bounds = getComposerHeightBounds();
+
+    return Math.min(Math.max(nextHeight, bounds.min), bounds.max);
+}
+
+function syncComposerHeightWithinBounds() {
+    composerHeight.value = clampComposerHeight(composerHeight.value);
+}
+
+function updateComposerHeight(clientY: number) {
+    const cardElement = getChatCardElement();
+
+    if (!cardElement) {
+        return;
+    }
+
+    const cardRect = cardElement.getBoundingClientRect();
+    composerHeight.value = clampComposerHeight(cardRect.bottom - clientY);
+}
+
+function handleComposerResizeMove(event: PointerEvent) {
+    if (!resizingComposer.value || event.pointerId !== activeResizePointerId) {
+        return;
+    }
+
+    updateComposerHeight(event.clientY);
+}
+
+function stopComposerResize(event?: PointerEvent) {
+    if (event && event.pointerId !== activeResizePointerId) {
+        return;
+    }
+
+    resizingComposer.value = false;
+    activeResizePointerId = 0;
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+    window.removeEventListener("pointermove", handleComposerResizeMove);
+    window.removeEventListener("pointerup", stopComposerResize);
+    window.removeEventListener("pointercancel", stopComposerResize);
+}
+
+function startComposerResize(event: PointerEvent) {
+    if (event.button !== 0) {
+        return;
+    }
+
+    event.preventDefault();
+    activeResizePointerId = event.pointerId;
+    resizingComposer.value = true;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ns-resize";
+
+    // 直接根据光标位置回推输入区高度，让拖拽过程稳定且直观。
+    updateComposerHeight(event.clientY);
+
+    window.addEventListener("pointermove", handleComposerResizeMove);
+    window.addEventListener("pointerup", stopComposerResize);
+    window.addEventListener("pointercancel", stopComposerResize);
 }
 
 function escapeHtml(value: string) {
@@ -455,6 +613,12 @@ async function applyModel(modelId: string) {
         console.error(error);
         ElMessage.error(getErrorMessage(error, "切换模型失败。"));
     }
+}
+
+async function selectModel(modelId: string) {
+    modelPickerOpen.value = false;
+    modelSearchKeyword.value = "";
+    await applyModel(modelId);
 }
 
 async function refreshModels() {
@@ -806,7 +970,10 @@ async function stopLocalServer() {
             </CardHeader>
         </Card>
 
-        <Card class="flex min-h-0 flex-1 flex-col border-border/70 shadow-sm">
+        <Card
+            ref="chatCard"
+            class="flex min-h-0 flex-1 flex-col border-border/70 shadow-sm"
+        >
             <div
                 ref="messagesViewport"
                 class="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 p-4"
@@ -1140,139 +1307,241 @@ async function stopLocalServer() {
                 </div>
             </div>
 
-            <Separator />
-
-            <div class="space-y-3 p-4">
+            <div
+                role="separator"
+                aria-label="调整输入区高度"
+                aria-orientation="horizontal"
+                class="group relative shrink-0 cursor-row-resize py-2 touch-none"
+                :class="resizingComposer ? 'bg-muted/20' : 'hover:bg-muted/10'"
+                @pointerdown="startComposerResize"
+            >
+                <Separator class="pointer-events-none" />
                 <div
-                    v-if="visibleErrorMessage"
-                    class="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive md:flex-row md:items-center md:justify-between"
-                >
-                    <span>{{ visibleErrorMessage || "AI 对话异常。" }}</span>
-                    <Button
-                        v-if="configurationErrorMessage"
-                        variant="outline"
-                        size="sm"
-                        class="shrink-0 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        @click="openAiSettings"
-                    >
-                        去配置
-                    </Button>
-                </div>
-
-                <div
-                    v-if="pendingFiles.length > 0"
-                    class="flex flex-wrap gap-2"
+                    class="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center"
                 >
                     <div
-                        v-for="file in pendingFiles"
-                        :key="file.id"
-                        class="flex max-w-72 items-center gap-2 rounded-full border bg-muted/35 px-3 py-1.5 text-xs"
+                        class="h-1.5 w-16 rounded-full bg-border/80 transition-colors group-hover:bg-primary/60"
+                        :class="resizingComposer ? 'bg-primary/70' : ''"
+                    ></div>
+                </div>
+            </div>
+
+            <div class="min-h-0 shrink-0" :style="composerStyle">
+                <div
+                    class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-4"
+                >
+                    <div
+                        v-if="visibleErrorMessage"
+                        class="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive md:flex-row md:items-center md:justify-between"
                     >
-                        <ImagePlus
-                            v-if="file.mediaType.startsWith('image/')"
-                            class="h-3.5 w-3.5"
-                        />
-                        <FileUp v-else class="h-3.5 w-3.5" />
-                        <span class="truncate">{{ file.name }}</span>
-                        <span class="text-muted-foreground">
-                            {{ formatFileSize(file.size) }}
-                        </span>
+                        <span>{{
+                            visibleErrorMessage || "AI 对话异常。"
+                        }}</span>
                         <Button
-                            variant="ghost"
-                            size="icon"
-                            class="h-5 w-5"
-                            @click="removePendingFile(file.id)"
+                            v-if="configurationErrorMessage"
+                            variant="outline"
+                            size="sm"
+                            class="shrink-0 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            @click="openAiSettings"
                         >
-                            <X class="h-3 w-3" />
+                            去配置
                         </Button>
                     </div>
-                </div>
 
-                <p
-                    v-if="pendingFiles.length > 0"
-                    class="text-xs text-muted-foreground"
-                >
-                    文本类附件会读取内容；图片和二进制文件会以附件说明形式随消息发送。
-                </p>
-
-                <InputGroup class="overflow-hidden">
-                    <InputGroupTextarea
-                        v-model="draft"
-                        class="min-h-24"
-                        placeholder="输入消息，支持 Markdown。Ctrl + Enter 发送。"
-                        :disabled="!hasConfiguration"
-                        @keydown="handleComposerKeydown"
-                    />
-                    <InputGroupAddon
-                        data-align="block-end"
-                        class="flex w-full flex-wrap items-center justify-between gap-2 border-t px-3 py-2"
+                    <div
+                        v-if="pendingFiles.length > 0"
+                        class="flex flex-wrap gap-2"
                     >
-                        <div class="flex flex-wrap items-center gap-1">
-                            <input
-                                ref="imageInput"
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                class="hidden"
-                                @change="handleFileInput"
-                            />
-                            <input
-                                ref="fileInput"
-                                type="file"
-                                multiple
-                                class="hidden"
-                                @change="handleFileInput"
-                            />
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                :disabled="!hasConfiguration"
-                                @click="triggerImageUpload"
-                            >
-                                <ImagePlus class="h-4 w-4" />
-                                图片
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                :disabled="!hasConfiguration"
-                                @click="triggerFileUpload"
-                            >
-                                <FileUp class="h-4 w-4" />
-                                文件
-                            </Button>
-                            <Select v-model="modelSelectValue">
-                                <SelectTrigger class="h-8 w-44">
-                                    <SelectValue placeholder="切换模型" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem
-                                        v-for="model in modelList"
-                                        :key="model.id"
-                                        :value="model.id"
-                                    >
-                                        {{ model.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <Button
-                            :variant="isGenerating ? 'secondary' : 'default'"
-                            :disabled="
-                                !hasConfiguration || (!isGenerating && !canSend)
-                            "
-                            @click="submitDraft"
+                        <div
+                            v-for="file in pendingFiles"
+                            :key="file.id"
+                            class="flex max-w-72 items-center gap-2 rounded-full border bg-muted/35 px-3 py-1.5 text-xs"
                         >
-                            <LoaderCircle
-                                v-if="isGenerating"
-                                class="h-4 w-4 animate-spin"
+                            <ImagePlus
+                                v-if="file.mediaType.startsWith('image/')"
+                                class="h-3.5 w-3.5"
                             />
-                            <Send v-else class="h-4 w-4" />
-                            {{ isGenerating ? "停止" : "发送" }}
-                        </Button>
-                    </InputGroupAddon>
-                </InputGroup>
+                            <FileUp v-else class="h-3.5 w-3.5" />
+                            <span class="truncate">{{ file.name }}</span>
+                            <span class="text-muted-foreground">
+                                {{ formatFileSize(file.size) }}
+                            </span>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-5 w-5"
+                                @click="removePendingFile(file.id)"
+                            >
+                                <X class="h-3 w-3" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <p
+                        v-if="pendingFiles.length > 0"
+                        class="text-xs text-muted-foreground"
+                    >
+                        文本类附件会读取内容；图片和二进制文件会以附件说明形式随消息发送。
+                    </p>
+
+                    <InputGroup class="min-h-0 flex-1 overflow-hidden">
+                        <InputGroupTextarea
+                            v-model="draft"
+                            class="h-full min-h-5 overflow-y-auto"
+                            placeholder="输入消息，支持 Markdown。Ctrl + Enter 发送。"
+                            :disabled="!hasConfiguration"
+                            @keydown="handleComposerKeydown"
+                        />
+                        <InputGroupAddon
+                            data-align="block-end"
+                            class="flex w-full flex-wrap items-center justify-between gap-2 border-t px-3 py-2"
+                        >
+                            <div class="flex flex-wrap items-center gap-1">
+                                <input
+                                    ref="imageInput"
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    class="hidden"
+                                    @change="handleFileInput"
+                                />
+                                <input
+                                    ref="fileInput"
+                                    type="file"
+                                    multiple
+                                    class="hidden"
+                                    @change="handleFileInput"
+                                />
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    :disabled="!hasConfiguration"
+                                    @click="triggerImageUpload"
+                                >
+                                    <ImagePlus class="h-4 w-4" />
+                                    图片
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    :disabled="!hasConfiguration"
+                                    @click="triggerFileUpload"
+                                >
+                                    <FileUp class="h-4 w-4" />
+                                    文件
+                                </Button>
+                                <Popover v-model:open="modelPickerOpen">
+                                    <PopoverTrigger as-child>
+                                        <Button
+                                            variant="outline"
+                                            class="h-8 w-56 justify-between px-3"
+                                            :disabled="!hasConfiguration"
+                                        >
+                                            <span class="truncate text-left">
+                                                {{ selectedModelLabel }}
+                                            </span>
+                                            <ChevronDown
+                                                class="h-4 w-4 shrink-0"
+                                            />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                        align="start"
+                                        class="w-88 p-0"
+                                    >
+                                        <div class="border-b p-2">
+                                            <Input
+                                                v-model="modelSearchKeyword"
+                                                class="h-9"
+                                                placeholder="搜索模型名称或 ID"
+                                            />
+                                        </div>
+                                        <div
+                                            class="max-h-72 overflow-y-auto p-1"
+                                        >
+                                            <div
+                                                v-if="loadingModels"
+                                                class="flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground"
+                                            >
+                                                <LoaderCircle
+                                                    class="h-4 w-4 animate-spin"
+                                                />
+                                                正在加载模型列表...
+                                            </div>
+                                            <div
+                                                v-else-if="
+                                                    filteredModelList.length ===
+                                                    0
+                                                "
+                                                class="px-3 py-6 text-sm text-muted-foreground"
+                                            >
+                                                {{
+                                                    modelList.length === 0
+                                                        ? "暂无可用模型，请先刷新模型列表。"
+                                                        : "没有匹配的模型。"
+                                                }}
+                                            </div>
+                                            <button
+                                                v-for="model in filteredModelList"
+                                                :key="model.id"
+                                                type="button"
+                                                class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted/70"
+                                                :class="
+                                                    model.id === selectedModelId
+                                                        ? 'bg-muted text-foreground'
+                                                        : 'text-muted-foreground'
+                                                "
+                                                @click="selectModel(model.id)"
+                                            >
+                                                <div class="min-w-0">
+                                                    <div
+                                                        class="truncate font-medium"
+                                                    >
+                                                        {{ model.name }}
+                                                    </div>
+                                                    <div
+                                                        v-if="
+                                                            model.name !==
+                                                            model.id
+                                                        "
+                                                        class="truncate text-xs text-muted-foreground"
+                                                    >
+                                                        {{ model.id }}
+                                                    </div>
+                                                </div>
+                                                <CheckCircle2
+                                                    v-if="
+                                                        model.id ===
+                                                        selectedModelId
+                                                    "
+                                                    class="h-4 w-4 shrink-0 text-primary"
+                                                />
+                                            </button>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            <Button
+                                :variant="
+                                    isGenerating ? 'secondary' : 'default'
+                                "
+                                :disabled="
+                                    !hasConfiguration ||
+                                    (!isGenerating && !canSend)
+                                "
+                                @click="submitDraft"
+                            >
+                                <LoaderCircle
+                                    v-if="isGenerating"
+                                    class="h-4 w-4 animate-spin"
+                                />
+                                <Send v-else class="h-4 w-4" />
+                                {{ isGenerating ? "停止" : "发送" }}
+                            </Button>
+                        </InputGroupAddon>
+                    </InputGroup>
+                </div>
             </div>
         </Card>
 

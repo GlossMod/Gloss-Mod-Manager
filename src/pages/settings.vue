@@ -306,6 +306,61 @@ watch(
                         </div>
                     </CardContent>
                 </Card>
+                <Card id="ai-config" class="scroll-mt-4">
+                    <CardHeader>
+                        <CardTitle>
+                            <h3>AI配置</h3>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-4">
+                        <div class="grid grid-cols-3 items-center gap-4">
+                            <div class="flex items-center">
+                                <InputGroup>
+                                    <InputGroupInput
+                                        type="text"
+                                        placeholder="Base Url"
+                                        v-model="baseUrl"
+                                    />
+                                    <InputGroupAddon>
+                                        <icon-link />
+                                    </InputGroupAddon>
+                                </InputGroup>
+                            </div>
+                            <div class="flex items-center">
+                                <InputGroup>
+                                    <InputGroupInput
+                                        type="password"
+                                        placeholder="API Key"
+                                        v-model="apiKey"
+                                    />
+                                    <InputGroupAddon>
+                                        <icon-key-square />
+                                    </InputGroupAddon>
+                                </InputGroup>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <Button variant="outline" as-child>
+                                    <a
+                                        href="https://one-docs.gloscai.com/apps/GlossModManager.html"
+                                        target="_blank"
+                                        class="flex items-center gap-1"
+                                    >
+                                        配置教程 <icon-external-link />
+                                    </a>
+                                </Button>
+                                <Button variant="outline" as-child>
+                                    <a
+                                        href="https://one-docs.gloscai.com/apps/GlossModManager.html"
+                                        target="_blank"
+                                        class="flex items-center gap-1"
+                                    >
+                                        使用教程 <icon-external-link />
+                                    </a>
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
                 <Card>
                     <CardHeader>
                         <CardTitle>
@@ -416,41 +471,6 @@ watch(
                                         type="password"
                                         placeholder="输入你的3DM Mods Key"
                                         v-model="glossModKey"
-                                    />
-                                    <InputGroupAddon>
-                                        <icon-key-square />
-                                    </InputGroupAddon>
-                                </InputGroup>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card id="ai-config" class="scroll-mt-4">
-                    <CardHeader>
-                        <CardTitle>
-                            <h3>AI配置</h3>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent class="flex flex-col gap-4">
-                        <div class="grid grid-cols-3 items-center gap-4">
-                            <div class="flex items-center">
-                                <InputGroup>
-                                    <InputGroupInput
-                                        type="text"
-                                        placeholder="Base Url"
-                                        v-model="baseUrl"
-                                    />
-                                    <InputGroupAddon>
-                                        <icon-link />
-                                    </InputGroupAddon>
-                                </InputGroup>
-                            </div>
-                            <div class="flex items-center">
-                                <InputGroup>
-                                    <InputGroupInput
-                                        type="password"
-                                        placeholder="API Key"
-                                        v-model="apiKey"
                                     />
                                     <InputGroupAddon>
                                         <icon-key-square />
