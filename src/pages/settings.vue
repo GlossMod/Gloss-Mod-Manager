@@ -350,7 +350,7 @@ watch(
                                 </Button>
                                 <Button variant="outline" as-child>
                                     <a
-                                        href="https://one-docs.gloscai.com/apps/GlossModManager.html"
+                                        href="https://gmm.aoe.top/docs/UseAi"
                                         target="_blank"
                                         class="flex items-center gap-1"
                                     >
