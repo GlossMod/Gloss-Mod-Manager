@@ -8,11 +8,12 @@ V2 版本最大的特色就是内嵌了 AI 对话功能，它不仅仅是一个�
 ## 配置方法
 
 1. 访问并注册 [Glosc AI One](https://one.gloscai.com/sign-up?aff=lm6z)
-2. 进入 [API Key](https://one.gloscai.com/keys)，点击 "创建 API 密钥"
-3. 输入任意名称，点击保存
-4. 复制刚刚创建的API密钥，应该是 `sk-xxxxxxxxx`
-5. 打开 Gloss Mod Manager，进入设置界面， AI 配置
-6. 填入 API Key，API 地址为 `https://one.gloscai.com/v1`
+2. 在 [钱包](https://one.gloscai.com/wallet) 充值额度, 随便充个10块钱够用大半年的了
+3. 进入 [API Key](https://one.gloscai.com/keys)，点击 "创建 API 密钥"
+4. 输入任意名称，点击保存
+5. 复制刚刚创建的API密钥，应该是 `sk-xxxxxxxxx`
+6. 打开 Gloss Mod Manager，进入设置界面， AI 配置
+7. 填入 API Key，API 地址为 `https://one.gloscai.com/v1`
 
 ![](https://assets-mod.3dmgame.com/static/upload/mod/202605/MOD6a0c313fba743.png)
 
