@@ -16,6 +16,7 @@ const markdown = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true,
+    breaks: true,
 });
 
 const defaultLinkOpen = markdown.renderer.rules.link_open;
@@ -99,3 +100,9 @@ const renderedHtml = computed(() => {
 <template>
     <article class="markdown-body docs-markdown-body" v-html="renderedHtml" />
 </template>
+
+<style scoped>
+.markdown-body:deep(ol) {
+    list-style: auto;
+}
+</style>
