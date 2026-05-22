@@ -132,12 +132,49 @@ function unwrapReactiveValue<T>(value: T): T {
     ) as T;
 }
 
+function getMessageParts(
+    message: IAiChatUIMessage | null | undefined,
+): IAiChatUIMessage["parts"] {
+    if (!message || !Array.isArray(message.parts)) {
+        return [];
+    }
+
+    return message.parts;
+}
+
+function hasValidMessageParts(
+    message: IAiChatUIMessage | null | undefined,
+): message is IAiChatUIMessage {
+    return getMessageParts(message).length > 0;
+}
+
+function hasInvalidMessages(messages: IAiChatUIMessage[]) {
+    if (!Array.isArray(messages)) {
+        return true;
+    }
+
+    return messages.some((message) => {
+        return !hasValidMessageParts(message);
+    });
+}
+
+function cloneValidMessages(messages: IAiChatUIMessage[]): IAiChatUIMessage[] {
+    if (!Array.isArray(messages)) {
+        return [];
+    }
+
+    const normalizedMessages = unwrapReactiveValue(messages);
+    const clonedMessages = structuredClone(
+        normalizedMessages,
+    ) as IAiChatUIMessage[];
+
+    return clonedMessages.filter(hasValidMessageParts);
+}
+
 function cloneMessages(
     messages: IAiChatUIMessage[],
 ): IAiChatTransportMessage[] {
-    const normalizedMessages = unwrapReactiveValue(messages);
-
-    return structuredClone(normalizedMessages) as IAiChatTransportMessage[];
+    return cloneValidMessages(messages) as IAiChatTransportMessage[];
 }
 
 function isFilePart(
@@ -151,7 +188,7 @@ function getMessageText(message: IAiChatUIMessage | undefined) {
         return "";
     }
 
-    return message.parts
+    return getMessageParts(message)
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("\n")
@@ -394,9 +431,38 @@ export const useAiChatStore = defineStore("AiChat", () => {
     }
 
     function normalizeConversationList(list: IAiChatConversation[]) {
-        return [...list].sort((left, right) => {
-            return right.updatedAt - left.updatedAt;
+        return [...list]
+            .map((conversation) => {
+                return {
+                    ...conversation,
+                    messages: cloneValidMessages(conversation.messages),
+                } satisfies IAiChatConversation;
+            })
+            .sort((left, right) => {
+                return right.updatedAt - left.updatedAt;
+            });
+    }
+
+    function hasInvalidConversationMessages(list: IAiChatConversation[]) {
+        return list.some((conversation) => {
+            return hasInvalidMessages(conversation.messages);
         });
+    }
+
+    function sanitizeActiveChatMessages(): IAiChatTransportMessage[] {
+        if (!chat.value) {
+            return [];
+        }
+
+        const sanitizedMessages = cloneMessages(
+            chat.value.messages as IAiChatUIMessage[],
+        );
+
+        if (sanitizedMessages.length !== chat.value.messages.length) {
+            chat.value.messages = sanitizedMessages;
+        }
+
+        return sanitizedMessages;
     }
 
     async function hydrateAiConfiguration() {
@@ -442,6 +508,8 @@ export const useAiChatStore = defineStore("AiChat", () => {
         );
         const normalizedActiveConversationId =
             savedActiveConversationId?.trim() ?? "";
+        const shouldFlushSanitizedConversationList =
+            hasInvalidConversationMessages(savedConversationList ?? []);
 
         conversationList.value = normalizedConversationList;
         activeConversationId.value = normalizedActiveConversationId;
@@ -456,6 +524,10 @@ export const useAiChatStore = defineStore("AiChat", () => {
         }
 
         conversationStateHydrated.value = true;
+
+        if (shouldFlushSanitizedConversationList) {
+            flushConversationPersistence("清理无效 AI 消息");
+        }
     }
 
     function getBootstrapMessages(
@@ -531,11 +603,12 @@ export const useAiChatStore = defineStore("AiChat", () => {
             return;
         }
 
-        const firstUserMessage = nextMessages.find((message) => {
+        const persistedMessages = cloneValidMessages(nextMessages);
+        const firstUserMessage = persistedMessages.find((message) => {
             return message.role === "user";
         });
         const firstText = getMessageText(firstUserMessage);
-        const firstFiles = firstUserMessage?.parts.filter(isFilePart) ?? [];
+        const firstFiles = getMessageParts(firstUserMessage).filter(isFilePart);
         const shouldGenerateTitle =
             existingConversation.title === "新会话" ||
             !existingConversation.title.trim();
@@ -549,7 +622,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
             updatedAt: Date.now(),
             modelId:
                 selectedModelId.value.trim() || existingConversation.modelId,
-            messages: cloneMessages(nextMessages),
+            messages: persistedMessages,
         });
 
         if (options.flushToDisk) {
@@ -780,6 +853,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
 
         const fileParts = Array.isArray(files) ? files : [];
         ensureActiveConversation(fileParts);
+        sanitizeActiveChatMessages();
 
         await chat.value.sendMessage({
             text: normalizedText,
@@ -905,6 +979,8 @@ export const useAiChatStore = defineStore("AiChat", () => {
             throw new Error("AI 会话尚未就绪。");
         }
 
+        sanitizeActiveChatMessages();
+
         const targetMessage = messages.value.find((message) => {
             return message.id === messageId;
         });
@@ -913,7 +989,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
             throw new Error("只能编辑用户消息。");
         }
 
-        const fileParts = targetMessage.parts.filter(isFilePart);
+        const fileParts = getMessageParts(targetMessage).filter(isFilePart);
 
         ensureActiveConversation(fileParts);
 
@@ -935,6 +1011,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
         }
 
         ensureActiveConversation();
+        sanitizeActiveChatMessages();
         await chat.value.regenerate({ messageId });
         persistActiveConversation();
     }
@@ -980,11 +1057,16 @@ export const useAiChatStore = defineStore("AiChat", () => {
             clearStreamingConversationSyncTimer();
         }
 
+        const nextMessagesToPersist =
+            nextStatus === "ready" || nextStatus === "error"
+                ? sanitizeActiveChatMessages()
+                : messages.value;
+
         if (
             previousStatus === "streaming" &&
             hasDeferredConversationSync.value
         ) {
-            persistActiveConversation(messages.value, {
+            persistActiveConversation(nextMessagesToPersist, {
                 flushToDisk: true,
             });
             hasDeferredConversationSync.value = false;
@@ -997,7 +1079,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
             nextStatus === "ready" ||
             nextStatus === "error"
         ) {
-            persistActiveConversation(messages.value, {
+            persistActiveConversation(nextMessagesToPersist, {
                 flushToDisk: true,
             });
         }

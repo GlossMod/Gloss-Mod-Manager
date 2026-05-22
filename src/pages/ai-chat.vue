@@ -759,7 +759,7 @@ async function submitDraft() {
     }
 
     try {
-        const sent = store.sendMessage(
+        const sent = await store.sendMessage(
             draft.value,
             toFileParts(pendingFiles.value),
         );
