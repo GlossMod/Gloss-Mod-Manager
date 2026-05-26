@@ -57,6 +57,10 @@ export class FileHandler {
         return `'${value.replace(/'/g, "''")}'`;
     }
 
+    private static toCmdLiteral(value: string) {
+        return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
+    }
+
     private static toShellOutputBytes(output: unknown) {
         if (output instanceof Uint8Array) {
             return output;
@@ -157,36 +161,45 @@ export class FileHandler {
             throw new Error("软链接源路径或目标路径不能为空。");
         }
 
-        const runNewItem = async (itemType: "SymbolicLink" | "Junction") => {
+        const runMklink = async (linkArgs: string[]) => {
+            const commandLine = ["mklink", ...linkArgs].join(" ");
             const script = [
                 "$ErrorActionPreference = 'Stop'",
-                `$target = ${FileHandler.toPowerShellLiteral(targetPath)}`,
-                `$source = ${FileHandler.toPowerShellLiteral(sourcePath)}`,
-                `$itemType = ${FileHandler.toPowerShellLiteral(itemType)}`,
-                "$escapedTarget = [System.Management.Automation.WildcardPattern]::Escape($target)",
-                "$resolvedSource = (Get-Item -LiteralPath $source -Force -ErrorAction Stop).FullName",
-                "New-Item -ItemType $itemType -Path $escapedTarget -Target $resolvedSource -ErrorAction Stop | Out-Null",
+                `$commandLine = ${FileHandler.toPowerShellLiteral(commandLine)}`,
+                "cmd.exe /d /s /c $commandLine",
+                "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
             ].join("; ");
 
-            await FileHandler.executeShellCommand("powershell", [
+            const args = [
                 "-NoLogo",
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
                 script,
-            ]);
+            ];
+
+            console.log({
+                commandName: "powershell",
+                args,
+                commandLine,
+            });
+
+            await FileHandler.executeShellCommand("powershell", args);
         };
 
+        const literalTarget = FileHandler.toCmdLiteral(targetPath);
+        const literalSource = FileHandler.toCmdLiteral(sourcePath);
+
         if (!isDirectory) {
-            await runNewItem("SymbolicLink");
+            await runMklink([literalTarget, literalSource]);
             return;
         }
 
         try {
-            await runNewItem("SymbolicLink");
+            await runMklink(["/D", literalTarget, literalSource]);
         } catch {
             // Windows 下目录符号链接可能受权限限制，失败时退回 Junction。
-            await runNewItem("Junction");
+            await runMklink(["/J", literalTarget, literalSource]);
         }
     }
 
