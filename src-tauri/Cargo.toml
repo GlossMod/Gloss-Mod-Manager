@@ -1,6 +1,6 @@
 [package]
 name = "gloss-mod-manager"
-version = "2.1.3"
+version = "2.1.4"
 description = "Gloss Mod Manager is a comprehensive modern game mod manager"
 authors = ["小莫"]
 edition = "2021"
