@@ -135,6 +135,7 @@ const Games = {
     "Darkest Dungeon": "黑暗地牢",
     "X4 Foundations": "X4 基石",
     "Resident Evil Requiem": "生化危机9 安魂曲",
+    "Command & Conquer Red Alert 2 and Yuri's Revenge": "命令与征服：红色警戒 2 及尤里的复仇",
 };
 
 const lang = {
