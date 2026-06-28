@@ -31,6 +31,7 @@ export interface IThirdPartyModFile {
     createdAt: string;
     downloadUrl: string;
     detailsUrl: string;
+    categoryName?: string;
 }
 
 export interface IThirdPartyModItem {
@@ -1032,7 +1033,22 @@ function normalizeNexusModsFiles(
 
     return list
         .sort((left, right) => {
+            const getCategoryWeight = (categoryName?: string) => {
+                switch (categoryName) {
+                    case "MAIN":
+                        return 0;
+                    case "OPTIONAL":
+                        return 1;
+                    default:
+                        return 2;
+                }
+            };
+            const categoryDifference =
+                getCategoryWeight(left.category_name) -
+                getCategoryWeight(right.category_name);
+
             return (
+                categoryDifference ||
                 (right.uploaded_timestamp ?? 0) - (left.uploaded_timestamp ?? 0)
             );
         })
@@ -1056,6 +1072,7 @@ function normalizeNexusModsFiles(
                     modId,
                     String(item.file_id),
                 ),
+                categoryName: item.category_name,
             } satisfies IThirdPartyModFile;
         });
 }

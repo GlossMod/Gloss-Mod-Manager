@@ -15,7 +15,13 @@ import {
 const manager = useManager();
 const settings = useSettings();
 const router = useRouter();
-const activeProvider = ref<sourceType>("GlossMod");
+const route = useRoute();
+const providerQueryValue = getQueryString(route.query.provider);
+const activeProvider = ref<sourceType>(
+    isExploreProviderQueryValue(providerQueryValue)
+        ? providerQueryValue
+        : "GlossMod",
+);
 const autoTranslate = PersistentStore.useValue<boolean>(
     "exploreAutoTranslate",
     false,
@@ -72,6 +78,43 @@ const providerOptions = computed(() => {
     ];
 });
 
+function getQueryString(value: unknown) {
+    return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
+}
+
+function isExploreProviderQueryValue(value: string): value is sourceType {
+    return (
+        value === "GlossMod" ||
+        THIRD_PARTY_PROVIDER_OPTIONS.some((item) => item.value === value)
+    );
+}
+
+function syncActiveProviderQuery() {
+    if (route.path !== "/explore") {
+        return;
+    }
+
+    const nextQuery = { ...route.query };
+
+    if (activeProvider.value === "GlossMod") {
+        delete nextQuery.provider;
+    } else {
+        nextQuery.provider = activeProvider.value;
+    }
+
+    if (
+        String(route.query.provider ?? "") ===
+        String(nextQuery.provider ?? "")
+    ) {
+        return;
+    }
+
+    void router.replace({
+        path: "/explore",
+        query: nextQuery,
+    });
+}
+
 watch(
     currentGame,
     () => {
@@ -88,6 +131,22 @@ watch(
         }
     },
     { immediate: true },
+);
+
+watch(activeProvider, syncActiveProviderQuery);
+
+watch(
+    () => route.query.provider,
+    (value) => {
+        const nextProvider = getQueryString(value);
+
+        if (
+            isExploreProviderQueryValue(nextProvider) &&
+            nextProvider !== activeProvider.value
+        ) {
+            activeProvider.value = nextProvider;
+        }
+    },
 );
 
 async function openAiSettings() {

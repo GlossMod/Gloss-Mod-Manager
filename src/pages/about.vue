@@ -106,8 +106,8 @@ const feedbackLinks: ILinkItem[] = [
         icon: MessageSquare,
     },
     {
-        title: "QQ群 2169033132",
-        href: "https://qm.qq.com/q/ft6b4xx2PS",
+        title: "QQ群 1039886543",
+        href: "https://qm.qq.com/q/iMXeJDJLiw",
         description: "相关链接部分提供的用户交流群入口。",
         icon: MessageSquare,
     },

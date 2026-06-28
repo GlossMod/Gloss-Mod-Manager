@@ -198,6 +198,7 @@ declare global {
   const queueGlossModDownloadWithSelection: typeof import('./lib/download-file-selection').queueGlossModDownloadWithSelection
   const queueThirdPartyModDownload: typeof import('./lib/third-party-download-queue').queueThirdPartyModDownload
   const queueThirdPartyModDownloadWithSelection: typeof import('./lib/download-file-selection').queueThirdPartyModDownloadWithSelection
+  const queueThirdPartyModDownloadsWithSelection: typeof import('./lib/download-file-selection').queueThirdPartyModDownloadsWithSelection
   const reactify: typeof import('@vueuse/core').reactify
   const reactifyObject: typeof import('@vueuse/core').reactifyObject
   const reactive: typeof import('vue').reactive

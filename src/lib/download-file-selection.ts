@@ -136,6 +136,16 @@ function buildThirdPartyPickerItems(
             badges.push("默认");
         }
 
+        if (file.categoryName) {
+            badges.push(
+                file.categoryName === "MAIN"
+                    ? "主文件"
+                    : file.categoryName === "OPTIONAL"
+                      ? "可选文件"
+                      : file.categoryName,
+            );
+        }
+
         const lines = [
             [
                 `版本：${file.version || "未标注"}`,
@@ -163,6 +173,8 @@ async function promptSelection(options: {
     note?: string;
     items: IDownloadFilePickerItem[];
     initialItemId?: string;
+    initialItemIds?: string[];
+    multiple?: boolean;
     confirmLabel?: string;
 }) {
     const picker = useDownloadFilePickerStore();
@@ -173,6 +185,8 @@ async function promptSelection(options: {
         note: options.note,
         items: options.items,
         initialItemId: options.initialItemId,
+        initialItemIds: options.initialItemIds,
+        multiple: options.multiple,
         confirmLabel: options.confirmLabel,
     });
 }
@@ -285,7 +299,7 @@ async function resolveThirdPartySelection(
     }
 
     const providerLabel = getThirdPartyProviderLabel(options.provider);
-    const selectedFileId = await promptSelection({
+    const selection = await promptSelection({
         title: `选择 ${providerLabel} 下载文件`,
         description: `${options.mod.title} 提供多个可下载文件，请选择这次要下载的文件。`,
         note: "已经明确点选某个文件行的下载按钮时，不会再次弹出该窗口。",
@@ -294,12 +308,12 @@ async function resolveThirdPartySelection(
         confirmLabel: "下载选中文件",
     });
 
-    if (!selectedFileId) {
+    if (!selection) {
         return null;
     }
 
     const selectedFile =
-        options.mod.files.find((item) => item.id === selectedFileId) ?? null;
+        options.mod.files.find((item) => item.id === selection) ?? null;
 
     if (!selectedFile) {
         throw new Error("未找到可下载的文件。");
@@ -308,6 +322,75 @@ async function resolveThirdPartySelection(
     return {
         mod: options.mod,
         file: selectedFile,
+    };
+}
+
+async function resolveThirdPartySelections(
+    options: IQueueThirdPartyDownloadOptions,
+): Promise<{ mod: IThirdPartyModDetail; files: IThirdPartyModFile[] } | null> {
+    const explicitFileId = options.fileId?.trim();
+
+    if (explicitFileId) {
+        const selection = await resolveThirdPartySelection(options);
+
+        return selection
+            ? {
+                  mod: selection.mod,
+                  files: [selection.file],
+              }
+            : null;
+    }
+
+    if (!Array.isArray(options.mod.files) || options.mod.files.length === 0) {
+        const fallbackFile = options.mod.primaryFile;
+
+        if (!fallbackFile) {
+            throw new Error("当前没有可下载的文件。");
+        }
+
+        return {
+            mod: options.mod,
+            files: [fallbackFile],
+        };
+    }
+
+    if (!hasThirdPartyMultipleFiles(options.mod)) {
+        return {
+            mod: options.mod,
+            files: [options.mod.primaryFile ?? options.mod.files[0]],
+        };
+    }
+
+    const providerLabel = getThirdPartyProviderLabel(options.provider);
+    const selection = await promptSelection({
+        title: `选择 ${providerLabel} 下载文件`,
+        description: `${options.mod.title} 提供多个可下载文件，可同时选择主文件和补丁文件。`,
+        note: "已经明确点选某个文件行的下载按钮时，不会再次弹出该窗口。",
+        items: buildThirdPartyPickerItems(providerLabel, options.mod),
+        initialItemIds: [options.mod.primaryFile?.id ?? ""].filter(Boolean),
+        multiple: true,
+        confirmLabel: "下载选中文件",
+    });
+
+    if (!selection) {
+        return null;
+    }
+
+    const selectedFileIds = Array.isArray(selection) ? selection : [selection];
+    const selectedFiles = selectedFileIds
+        .map(
+            (fileId) =>
+                options.mod.files.find((item) => item.id === fileId) ?? null,
+        )
+        .filter((file): file is IThirdPartyModFile => Boolean(file));
+
+    if (selectedFiles.length === 0) {
+        throw new Error("未找到可下载的文件。");
+    }
+
+    return {
+        mod: options.mod,
+        files: selectedFiles,
     };
 }
 
@@ -342,6 +425,30 @@ export async function queueThirdPartyModDownloadWithSelection(
         mod: selection.mod,
         fileId: selection.file.id,
     });
+}
+
+export async function queueThirdPartyModDownloadsWithSelection(
+    options: IQueueThirdPartyDownloadOptions,
+): Promise<IQueueThirdPartyDownloadResult[] | null> {
+    const selection = await resolveThirdPartySelections(options);
+
+    if (!selection) {
+        return null;
+    }
+
+    const results: IQueueThirdPartyDownloadResult[] = [];
+
+    for (const file of selection.files) {
+        results.push(
+            await queueThirdPartyModDownload({
+                ...options,
+                mod: selection.mod,
+                fileId: file.id,
+            }),
+        );
+    }
+
+    return results;
 }
 
 export { hasGlossMultipleResources, hasThirdPartyMultipleFiles };

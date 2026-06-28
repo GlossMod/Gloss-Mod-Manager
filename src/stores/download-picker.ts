@@ -11,11 +11,14 @@ export interface IDownloadFilePickerRequest {
     note?: string;
     items: IDownloadFilePickerItem[];
     initialItemId?: string;
+    initialItemIds?: string[];
+    multiple?: boolean;
     confirmLabel?: string;
     cancelLabel?: string;
 }
 
-type DownloadFilePickerResolver = (value: string | null) => void;
+type DownloadFilePickerValue = string | string[] | null;
+type DownloadFilePickerResolver = (value: DownloadFilePickerValue) => void;
 
 export const useDownloadFilePickerStore = defineStore(
     "DownloadFilePicker",
@@ -26,6 +29,8 @@ export const useDownloadFilePickerStore = defineStore(
         const note = ref("");
         const items = ref<IDownloadFilePickerItem[]>([]);
         const selectedItemId = ref("");
+        const selectedItemIds = ref<string[]>([]);
+        const multiple = ref(false);
         const confirmLabel = ref("下载选中文件");
         const cancelLabel = ref("取消");
 
@@ -37,6 +42,8 @@ export const useDownloadFilePickerStore = defineStore(
             note.value = "";
             items.value = [];
             selectedItemId.value = "";
+            selectedItemIds.value = [];
+            multiple.value = false;
             confirmLabel.value = "下载选中文件";
             cancelLabel.value = "取消";
         }
@@ -46,7 +53,16 @@ export const useDownloadFilePickerStore = defineStore(
                 return;
             }
 
-            selectedItemId.value = itemId;
+            if (!multiple.value) {
+                selectedItemId.value = itemId;
+                selectedItemIds.value = [itemId];
+                return;
+            }
+
+            selectedItemIds.value = selectedItemIds.value.includes(itemId)
+                ? selectedItemIds.value.filter((id) => id !== itemId)
+                : [...selectedItemIds.value, itemId];
+            selectedItemId.value = selectedItemIds.value[0] ?? "";
         }
 
         function cancelPending() {
@@ -59,18 +75,27 @@ export const useDownloadFilePickerStore = defineStore(
         }
 
         function confirmSelection(itemId?: string) {
-            const nextItemId = itemId ?? selectedItemId.value;
+            const nextItemIds = multiple.value
+                ? selectedItemIds.value
+                : [itemId ?? selectedItemId.value];
 
-            if (!items.value.some((item) => item.id === nextItemId)) {
+            const validItemIds = nextItemIds.filter((id) =>
+                items.value.some((item) => item.id === id),
+            );
+
+            if (validItemIds.length === 0) {
                 return;
             }
 
             const currentResolver = resolver;
+            const isMultipleSelection = multiple.value;
 
             resolver = null;
             open.value = false;
             resetState();
-            currentResolver?.(nextItemId);
+            currentResolver?.(
+                isMultipleSelection ? validItemIds : validItemIds[0],
+            );
         }
 
         function promptSelection(options: IDownloadFilePickerRequest) {
@@ -82,16 +107,29 @@ export const useDownloadFilePickerStore = defineStore(
             description.value = options.description;
             note.value = options.note ?? "";
             items.value = [...options.items];
-            selectedItemId.value =
-                options.initialItemId &&
-                options.items.some((item) => item.id === options.initialItemId)
-                    ? options.initialItemId
-                    : (options.items[0]?.id ?? "");
+            multiple.value = Boolean(options.multiple);
+
+            const initialItemIds = [
+                ...(options.initialItemIds ?? []),
+                ...(options.initialItemId ? [options.initialItemId] : []),
+            ].filter((id, index, list) => {
+                return (
+                    list.indexOf(id) === index &&
+                    options.items.some((item) => item.id === id)
+                );
+            });
+            selectedItemIds.value =
+                initialItemIds.length > 0
+                    ? initialItemIds
+                    : options.items[0]
+                      ? [options.items[0].id]
+                      : [];
+            selectedItemId.value = selectedItemIds.value[0] ?? "";
             confirmLabel.value = options.confirmLabel ?? "下载选中文件";
             cancelLabel.value = options.cancelLabel ?? "取消";
             open.value = true;
 
-            return new Promise<string | null>((resolve) => {
+            return new Promise<DownloadFilePickerValue>((resolve) => {
                 resolver = resolve;
             });
         }
@@ -103,6 +141,8 @@ export const useDownloadFilePickerStore = defineStore(
             note,
             items,
             selectedItemId,
+            selectedItemIds,
+            multiple,
             confirmLabel,
             cancelLabel,
             selectItem,

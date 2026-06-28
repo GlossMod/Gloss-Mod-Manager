@@ -359,7 +359,15 @@ async function downloadResource(resource?: IResource | null) {
 
 async function goBackToExplore() {
     try {
-        await router.push("/explore");
+        const returnTo = Array.isArray(route.query.returnTo)
+            ? route.query.returnTo[0]
+            : route.query.returnTo;
+        const target =
+            typeof returnTo === "string" && returnTo.startsWith("/explore")
+                ? returnTo
+                : "/explore";
+
+        await router.push(target);
     } catch (error: unknown) {
         console.error(error);
         ElMessage.error("返回游览页失败。");
@@ -600,10 +608,6 @@ async function goBackToExplore() {
             <Card class="overflow-hidden">
                 <CardHeader>
                     <CardTitle>详细介绍</CardTitle>
-                    <CardDescription>
-                        详情内容使用 markdown-it 解析，兼容 Markdown
-                        与接口返回的 HTML 内容。
-                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <article

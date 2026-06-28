@@ -7,7 +7,7 @@ import { useI18n } from "vue-i18n";
 import { Aria2Rpc, type IAria2RpcTask } from "@/lib/aria2-rpc";
 import {
     hasThirdPartyMultipleFiles,
-    queueThirdPartyModDownloadWithSelection,
+    queueThirdPartyModDownloadsWithSelection,
 } from "@/lib/download-file-selection";
 import {
     findGlossDuplicateTasks,
@@ -119,6 +119,7 @@ const emit = defineEmits<{
 const manager = useManager();
 const settings = useSettings();
 const router = useRouter();
+const route = useRoute();
 const { t, locale } = useI18n();
 const taskMetaMap = PersistentStore.useValue<
     Record<string, IGlossDownloadTaskMeta>
@@ -157,16 +158,31 @@ const translationLoading = ref(false);
 const translationErrorMessage = ref("");
 const detailTranslationLoading = ref(false);
 const detailTranslationErrorMessage = ref("");
-const page = ref(1);
-const pageSize = ref(DEFAULT_PAGE_SIZE);
+const page = ref(readPositiveIntegerQuery("tpPage", 1));
+const pageSize = ref(
+    readAllowedQuery("tpPageSize", PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE),
+);
+const jumpPageInput = ref(String(page.value));
 const isFiltersExpanded = ref(false);
 const totalCount = ref(0);
 const totalPages = ref(0);
-const searchKeyword = ref("");
-const selectedSort = ref<ThirdPartySortKey>("default");
-const selectedNexusCategory = ref(NEXUS_FACET_ALL_VALUE);
-const selectedNexusLanguage = ref(NEXUS_FACET_ALL_VALUE);
-const selectedNexusTag = ref(NEXUS_FACET_ALL_VALUE);
+const searchKeyword = ref(readStringQuery("tpSearch"));
+const selectedSort = ref<ThirdPartySortKey>(
+    readAllowedQuery(
+        "tpSort",
+        ["default", "updatedAt", "createdAt", "downloads"],
+        "default",
+    ) as ThirdPartySortKey,
+);
+const selectedNexusCategory = ref(
+    readStringQuery("tpNexusCategory") || NEXUS_FACET_ALL_VALUE,
+);
+const selectedNexusLanguage = ref(
+    readStringQuery("tpNexusLanguage") || NEXUS_FACET_ALL_VALUE,
+);
+const selectedNexusTag = ref(
+    readStringQuery("tpNexusTag") || NEXUS_FACET_ALL_VALUE,
+);
 const queueingResourceKey = ref("");
 const detailOpen = ref(false);
 const detailLoading = ref(false);
@@ -187,6 +203,9 @@ let refreshTaskSnapshotPending = false;
 let taskSnapshotTimer: ReturnType<typeof globalThis.setInterval> | null = null;
 let listTranslationAbortController: AbortController | null = null;
 let detailTranslationAbortController: AbortController | null = null;
+let routeSyncPending = false;
+let hasHandledInitialProvider = false;
+let hasHandledInitialGame = false;
 
 const currentGame = computed(() => manager.managerGame);
 const currentGameName = computed(() => {
@@ -375,7 +394,12 @@ const paginationItems = computed<IPageItem[]>(() => {
 watch(
     () => props.provider,
     () => {
-        resetFilters();
+        if (hasHandledInitialProvider) {
+            resetFilters();
+        } else {
+            hasHandledInitialProvider = true;
+        }
+
         mods.value = [];
         errorMessage.value = "";
         closeDetail();
@@ -387,6 +411,11 @@ watch(
 watch(
     currentGame,
     () => {
+        if (!hasHandledInitialGame) {
+            hasHandledInitialGame = true;
+            return;
+        }
+
         closeDetail();
         if (page.value !== 1) {
             page.value = 1;
@@ -399,8 +428,24 @@ watch(
 );
 
 watch(page, () => {
+    jumpPageInput.value = String(page.value);
     void fetchMods();
 });
+
+watch(
+    () => [
+        props.provider,
+        page.value,
+        pageSize.value,
+        searchKeyword.value,
+        selectedSort.value,
+        selectedNexusCategory.value,
+        selectedNexusLanguage.value,
+        selectedNexusTag.value,
+    ],
+    scheduleExploreRouteSync,
+    { immediate: true },
+);
 
 watch(pageSize, () => {
     if (page.value !== 1) {
@@ -564,6 +609,122 @@ onBeforeUnmount(() => {
         taskSnapshotTimer = null;
     }
 });
+
+function readQueryValue(key: string) {
+    const value = route.query[key];
+
+    return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
+}
+
+function readStringQuery(key: string) {
+    return readQueryValue(key).trim();
+}
+
+function readPositiveIntegerQuery(key: string, fallback: number) {
+    const value = Number(readQueryValue(key));
+
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+}
+
+function readAllowedQuery<T extends string>(
+    key: string,
+    allowedValues: readonly T[],
+    fallback: T,
+) {
+    const value = readQueryValue(key);
+
+    return allowedValues.includes(value as T) ? (value as T) : fallback;
+}
+
+function setQueryValue(
+    query: Record<string, string | string[]>,
+    key: string,
+    value: string,
+    defaultValue = "",
+) {
+    if (!value || value === defaultValue) {
+        delete query[key];
+        return;
+    }
+
+    query[key] = value;
+}
+
+function cloneRouteQuery() {
+    const query: Record<string, string | string[]> = {};
+
+    for (const [key, value] of Object.entries(route.query)) {
+        if (typeof value === "string") {
+            query[key] = value;
+        } else if (Array.isArray(value)) {
+            query[key] = value.filter(
+                (item): item is string => typeof item === "string",
+            );
+        }
+    }
+
+    return query;
+}
+
+function normalizeQuery(query: Record<string, unknown>) {
+    return JSON.stringify(
+        Object.keys(query)
+            .sort()
+            .map((key) => [key, query[key]]),
+    );
+}
+
+function scheduleExploreRouteSync() {
+    if (routeSyncPending) {
+        return;
+    }
+
+    routeSyncPending = true;
+    globalThis.queueMicrotask(() => {
+        routeSyncPending = false;
+        syncExploreRouteQuery();
+    });
+}
+
+function syncExploreRouteQuery() {
+    if (route.path !== "/explore") {
+        return;
+    }
+
+    const nextQuery = cloneRouteQuery();
+
+    setQueryValue(nextQuery, "tpPage", String(page.value), "1");
+    setQueryValue(nextQuery, "tpPageSize", pageSize.value, DEFAULT_PAGE_SIZE);
+    setQueryValue(nextQuery, "tpSearch", searchKeyword.value.trim());
+    setQueryValue(nextQuery, "tpSort", selectedSort.value, "default");
+    setQueryValue(
+        nextQuery,
+        "tpNexusCategory",
+        selectedNexusCategory.value,
+        NEXUS_FACET_ALL_VALUE,
+    );
+    setQueryValue(
+        nextQuery,
+        "tpNexusLanguage",
+        selectedNexusLanguage.value,
+        NEXUS_FACET_ALL_VALUE,
+    );
+    setQueryValue(
+        nextQuery,
+        "tpNexusTag",
+        selectedNexusTag.value,
+        NEXUS_FACET_ALL_VALUE,
+    );
+
+    if (normalizeQuery(nextQuery) === normalizeQuery(route.query)) {
+        return;
+    }
+
+    void router.replace({
+        path: "/explore",
+        query: nextQuery,
+    });
+}
 
 async function fetchMods() {
     if (!currentGame.value) {
@@ -1364,7 +1525,7 @@ async function queueDownload(mod: IThirdPartyModDetail, fileId?: string) {
     queueingResourceKey.value = queueKey;
 
     try {
-        const result = await queueThirdPartyModDownloadWithSelection({
+        const results = await queueThirdPartyModDownloadsWithSelection({
             provider: props.provider,
             mod,
             fileId: normalizedFileId || undefined,
@@ -1373,27 +1534,45 @@ async function queueDownload(mod: IThirdPartyModDetail, fileId?: string) {
             nexusUser: settings.nexusModsUser,
         });
 
-        if (!result) {
+        if (!results) {
             ElMessage.info(t("explore.messages.downloadFileCanceled"));
             return;
         }
 
-        if (
-            ["created", "resumed", "retried", "exists"].includes(result.status)
-        ) {
+        if (results.some((result) => {
+            return ["created", "resumed", "retried", "exists"].includes(
+                result.status,
+            );
+        })) {
             void refreshTaskSnapshots();
         }
 
-        if (
-            result.status === "created" ||
-            result.status === "resumed" ||
-            result.status === "retried"
-        ) {
-            ElMessage.success(result.message);
+        if (results.length === 1) {
+            const [result] = results;
+
+            if (
+                result.status === "created" ||
+                result.status === "resumed" ||
+                result.status === "retried"
+            ) {
+                ElMessage.success(result.message);
+                return;
+            }
+
+            ElMessage.info(result.message);
             return;
         }
 
-        ElMessage.info(result.message);
+        const submittedCount = results.filter((result) => {
+            return ["created", "resumed", "retried"].includes(result.status);
+        }).length;
+        const existingCount = results.filter((result) => {
+            return result.status === "exists";
+        }).length;
+
+        ElMessage.success(
+            `已处理 ${results.length} 个文件，其中 ${submittedCount} 个已加入或继续下载，${existingCount} 个已在队列中。`,
+        );
     } finally {
         if (queueingResourceKey.value === queueKey) {
             queueingResourceKey.value = "";
@@ -1696,6 +1875,17 @@ function goToPage(targetPage: number) {
     }
 
     page.value = targetPage;
+}
+
+function jumpToPage() {
+    const targetPage = Number(jumpPageInput.value);
+
+    if (!Number.isFinite(targetPage)) {
+        jumpPageInput.value = String(page.value);
+        return;
+    }
+
+    goToPage(Math.round(targetPage));
 }
 
 function toErrorMessage(error: unknown, fallbackMessage: string) {
@@ -2375,6 +2565,25 @@ function escapeHtml(source: string) {
                             {{ item.label }}
                         </Button>
                     </template>
+
+                    <div class="flex items-center gap-2">
+                        <Input
+                            v-model="jumpPageInput"
+                            class="h-9 w-20"
+                            type="number"
+                            min="1"
+                            :max="totalPages || 1"
+                            @keydown.enter="jumpToPage"
+                        />
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            :disabled="totalPages <= 1"
+                            @click="jumpToPage"
+                        >
+                            跳转
+                        </Button>
+                    </div>
 
                     <Button
                         size="sm"

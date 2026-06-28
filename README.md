@@ -2,7 +2,7 @@
 
 <center> 
 
-![][license] ![][author] ![][Vite] ![][Electron] ![][vue] ![][version]  [![][GitHub]](https://github.com/GlossMod/Gloss-Mod-Manager)
+![][license] ![][author] ![][Vite]  ![][vue] ![][version]  [![][GitHub]](https://github.com/GlossMod/Gloss-Mod-Manager)
 </center> 
 
 
@@ -98,7 +98,6 @@ V2 版本是对 V1 版本的全面升级，最显著的提升就是 安装包的
 
 [license]:https://p.aoe.top/shields/github/license/GlossMod/Gloss-Mod-Manager.svg
 [author]: https://p.aoe.top/shields/badge/作者-小莫-blue?logo=Cloudera
-[Electron]: https://p.aoe.top/shields/badge/Electron-26.2.0-47848F?logo=electron
 [vue]: https://p.aoe.top/shields/badge/Vue3-3.2.45-4FC08D?logo=vuedotjs
 [Vite]: https://p.aoe.top/shields/badge/Vite-4.0.4-646CFF?logo=vite
 [pinia]: https://p.aoe.top/shields/badge/Pinia-2.0.30-ecb732?logo=Pinia

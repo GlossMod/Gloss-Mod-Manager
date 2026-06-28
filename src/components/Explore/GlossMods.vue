@@ -139,6 +139,7 @@ const emit = defineEmits<{
 
 const manager = useManager();
 const router = useRouter();
+const route = useRoute();
 const { t, locale } = useI18n();
 const taskMetaMap = PersistentStore.useValue<
     Record<string, IGlossDownloadTaskMeta>
@@ -192,18 +193,38 @@ const glossGameTypeLoading = ref(false);
 const glossGameTypeError = ref("");
 const totalCount = ref(0);
 const totalPages = ref(0);
-const page = ref(1);
-const pageSize = ref(DEFAULT_PAGE_SIZE);
+const page = ref(readPositiveIntegerQuery("gPage", 1));
+const pageSize = ref(
+    readAllowedQuery("gPageSize", PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE),
+);
+const jumpPageInput = ref(String(page.value));
 const isFiltersExpanded = ref(false);
-const searchKeyword = ref("");
-const tagKeyword = ref("");
-const selectedOriginal = ref("all");
-const selectedTime = ref("all");
-const selectedType = ref("all");
-const selectedSort = ref<GlossSortKey>("default");
-const onlySupportGmm = ref(false);
-const onlyLocal = ref(false);
-const followCurrentGame = ref(true);
+const searchKeyword = ref(readStringQuery("gSearch"));
+const tagKeyword = ref(readStringQuery("gTags"));
+const selectedOriginal = ref(
+    readAllowedQuery("gOriginal", ["all", "1", "2", "3", "4"], "all"),
+);
+const selectedTime = ref(
+    readAllowedQuery("gTime", ["all", "1", "2", "3", "4"], "all"),
+);
+const selectedType = ref(readStringQuery("gType") || "all");
+const selectedSort = ref<GlossSortKey>(
+    readAllowedQuery(
+        "gSort",
+        [
+            "default",
+            "updatedAt",
+            "createdAt",
+            "downloads",
+            "views",
+            "favorites",
+        ],
+        "default",
+    ) as GlossSortKey,
+);
+const onlySupportGmm = ref(readBooleanQuery("gSupportGmm"));
+const onlyLocal = ref(readBooleanQuery("gLocal"));
+const followCurrentGame = ref(!readBooleanQuery("gAllGames"));
 
 // 用请求序号兜住并发搜索，避免慢请求把新结果覆盖掉。
 let requestSequence = 0;
@@ -212,6 +233,7 @@ let translationRequestSequence = 0;
 let refreshTaskSnapshotPending = false;
 let taskSnapshotTimer: ReturnType<typeof globalThis.setInterval> | null = null;
 let translationAbortController: AbortController | null = null;
+let routeSyncPending = false;
 
 const currentGame = computed(() => manager.managerGame);
 const currentGameName = computed(
@@ -415,6 +437,28 @@ watch(
     { immediate: true },
 );
 
+watch(page, () => {
+    jumpPageInput.value = String(page.value);
+});
+
+watch(
+    () => [
+        page.value,
+        pageSize.value,
+        searchKeyword.value,
+        tagKeyword.value,
+        selectedOriginal.value,
+        selectedTime.value,
+        selectedType.value,
+        selectedSort.value,
+        onlySupportGmm.value,
+        onlyLocal.value,
+        followCurrentGame.value,
+    ],
+    scheduleExploreRouteSync,
+    { immediate: true },
+);
+
 watchDebounced(
     () => [
         searchKeyword.value.trim(),
@@ -542,6 +586,115 @@ onBeforeUnmount(() => {
         taskSnapshotTimer = null;
     }
 });
+
+function readQueryValue(key: string) {
+    const value = route.query[key];
+
+    return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
+}
+
+function readStringQuery(key: string) {
+    return readQueryValue(key).trim();
+}
+
+function readPositiveIntegerQuery(key: string, fallback: number) {
+    const value = Number(readQueryValue(key));
+
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+}
+
+function readAllowedQuery<T extends string>(
+    key: string,
+    allowedValues: readonly T[],
+    fallback: T,
+) {
+    const value = readQueryValue(key);
+
+    return allowedValues.includes(value as T) ? (value as T) : fallback;
+}
+
+function readBooleanQuery(key: string) {
+    return readQueryValue(key) === "1";
+}
+
+function setQueryValue(
+    query: Record<string, string | string[]>,
+    key: string,
+    value: string,
+    defaultValue = "",
+) {
+    if (!value || value === defaultValue) {
+        delete query[key];
+        return;
+    }
+
+    query[key] = value;
+}
+
+function cloneRouteQuery() {
+    const query: Record<string, string | string[]> = {};
+
+    for (const [key, value] of Object.entries(route.query)) {
+        if (typeof value === "string") {
+            query[key] = value;
+        } else if (Array.isArray(value)) {
+            query[key] = value.filter(
+                (item): item is string => typeof item === "string",
+            );
+        }
+    }
+
+    return query;
+}
+
+function normalizeQuery(query: Record<string, unknown>) {
+    return JSON.stringify(
+        Object.keys(query)
+            .sort()
+            .map((key) => [key, query[key]]),
+    );
+}
+
+function scheduleExploreRouteSync() {
+    if (routeSyncPending) {
+        return;
+    }
+
+    routeSyncPending = true;
+    globalThis.queueMicrotask(() => {
+        routeSyncPending = false;
+        syncExploreRouteQuery();
+    });
+}
+
+function syncExploreRouteQuery() {
+    if (route.path !== "/explore") {
+        return;
+    }
+
+    const nextQuery = cloneRouteQuery();
+
+    setQueryValue(nextQuery, "gPage", String(page.value), "1");
+    setQueryValue(nextQuery, "gPageSize", pageSize.value, DEFAULT_PAGE_SIZE);
+    setQueryValue(nextQuery, "gSearch", searchKeyword.value.trim());
+    setQueryValue(nextQuery, "gTags", tagKeyword.value.trim());
+    setQueryValue(nextQuery, "gOriginal", selectedOriginal.value, "all");
+    setQueryValue(nextQuery, "gTime", selectedTime.value, "all");
+    setQueryValue(nextQuery, "gType", selectedType.value, "all");
+    setQueryValue(nextQuery, "gSort", selectedSort.value, "default");
+    setQueryValue(nextQuery, "gSupportGmm", onlySupportGmm.value ? "1" : "");
+    setQueryValue(nextQuery, "gLocal", onlyLocal.value ? "1" : "");
+    setQueryValue(nextQuery, "gAllGames", followCurrentGame.value ? "" : "1");
+
+    if (normalizeQuery(nextQuery) === normalizeQuery(route.query)) {
+        return;
+    }
+
+    void router.replace({
+        path: "/explore",
+        query: nextQuery,
+    });
+}
 
 function buildListUrl() {
     const url = new URL(`${GLOSS_MOD_API_BASE_URL}/mods`);
@@ -1280,6 +1433,9 @@ async function openModDetail(item: IGlossExploreMod) {
     try {
         await router.push({
             path: `/detail/${item.id}`,
+            query: {
+                returnTo: route.fullPath,
+            },
         });
     } catch (error) {
         console.error(error);
@@ -1349,6 +1505,17 @@ function goToPage(targetPage: number) {
     }
 
     page.value = targetPage;
+}
+
+function jumpToPage() {
+    const targetPage = Number(jumpPageInput.value);
+
+    if (!Number.isFinite(targetPage)) {
+        jumpPageInput.value = String(page.value);
+        return;
+    }
+
+    goToPage(Math.round(targetPage));
 }
 </script>
 
@@ -2014,6 +2181,25 @@ function goToPage(targetPage: number) {
                             {{ item.label }}
                         </Button>
                     </template>
+
+                    <div class="flex items-center gap-2">
+                        <Input
+                            v-model="jumpPageInput"
+                            class="h-9 w-20"
+                            type="number"
+                            min="1"
+                            :max="totalPages || 1"
+                            @keydown.enter="jumpToPage"
+                        />
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            :disabled="totalPages <= 1"
+                            @click="jumpToPage"
+                        >
+                            跳转
+                        </Button>
+                    </div>
 
                     <Button
                         size="sm"

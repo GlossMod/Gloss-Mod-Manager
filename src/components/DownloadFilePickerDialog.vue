@@ -9,7 +9,8 @@ const {
     description,
     note,
     items,
-    selectedItemId,
+    selectedItemIds,
+    multiple,
     confirmLabel,
     cancelLabel,
 } = storeToRefs(picker);
@@ -30,6 +31,10 @@ function handleConfirm() {
 
 function handleCancel() {
     picker.cancelPending();
+}
+
+function isSelected(itemId: string) {
+    return selectedItemIds.value.includes(itemId);
 }
 </script>
 
@@ -59,7 +64,7 @@ function handleCancel() {
                         :class="
                             cn(
                                 'w-full rounded-xl border px-4 py-4 text-left transition-colors',
-                                selectedItemId === item.id
+                                isSelected(item.id)
                                     ? 'border-primary bg-primary/5 shadow-xs'
                                     : 'hover:border-primary/40 hover:bg-muted/30',
                             )
@@ -92,16 +97,20 @@ function handleCancel() {
                                 :class="
                                     cn(
                                         'shrink-0 rounded-full border px-3 py-1 text-xs font-medium',
-                                        selectedItemId === item.id
+                                        isSelected(item.id)
                                             ? 'border-primary bg-primary text-primary-foreground'
                                             : 'border-border/70 text-muted-foreground',
                                     )
                                 "
                             >
                                 {{
-                                    selectedItemId === item.id
-                                        ? "已选择"
-                                        : "点击选择"
+                                    isSelected(item.id)
+                                        ? multiple
+                                            ? "已勾选"
+                                            : "已选择"
+                                        : multiple
+                                          ? "点击勾选"
+                                          : "点击选择"
                                 }}
                             </div>
                         </div>
@@ -113,7 +122,10 @@ function handleCancel() {
                 <Button variant="outline" @click="handleCancel">
                     {{ cancelLabel }}
                 </Button>
-                <Button :disabled="!selectedItemId" @click="handleConfirm">
+                <Button
+                    :disabled="selectedItemIds.length === 0"
+                    @click="handleConfirm"
+                >
                     {{ confirmLabel }}
                 </Button>
             </DialogFooter>
