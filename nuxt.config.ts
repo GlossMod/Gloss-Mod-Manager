@@ -20,7 +20,7 @@ export default defineNuxtConfig({
                     name: "viewport",
                     content: "width=device-width, initial-scale=1.0",
                 },
-                { name: "theme-color", content: "#020817" },
+                { name: "theme-color", content: "#0a0a0a" },
                 { name: "application-name", content: "Gloss Mod Manager" },
             ],
             link: [{ rel: "icon", type: "image/x-icon", href: "/favicon.ico" }],

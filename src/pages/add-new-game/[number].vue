@@ -6,6 +6,7 @@ import DiscussionCommentThread from "@/components/DiscussionCommentThread.vue";
 import DiscussionMarkdown from "@/components/DiscussionMarkdown.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
     ExternalLink,
     Github,
@@ -366,7 +367,7 @@ watch(discussionNumber, async (nextNumber, previousNumber) => {
             </div>
 
             <div
-                class="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                class="flex flex-col gap-4 rounded-lg border bg-card p-5 sm:flex-row sm:items-center sm:justify-between"
             >
                 <div class="space-y-1.5">
                     <div class="flex items-center gap-2 text-sm font-medium">
@@ -570,12 +571,11 @@ watch(discussionNumber, async (nextNumber, previousNumber) => {
                             {{ pageMessage }}
                         </div>
 
-                        <textarea
+                        <Textarea
                             v-model="commentBody"
                             rows="4"
                             placeholder="写下你的评论，支持 Markdown..."
-                            class="flex w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        ></textarea>
+                        />
 
                         <div class="flex items-center justify-between gap-4">
                             <div

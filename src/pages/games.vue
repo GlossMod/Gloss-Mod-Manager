@@ -196,7 +196,7 @@ const filteredGames = computed(() => {
                 v-model="searchQuery"
                 type="text"
                 placeholder="搜索游戏名称或系列..."
-                class="flex h-12 w-full rounded-full border border-input bg-background/50 backdrop-blur pl-10 pr-4 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-all hover:bg-background shadow-sm"
+                class="flex h-12 w-full rounded-md border border-input bg-background pl-10 pr-4 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
             />
         </div>
 
@@ -205,20 +205,6 @@ const filteredGames = computed(() => {
             v-if="filteredGames.length > 0"
             class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
         >
-            <!-- <Card
-                v-for="game in filteredGames"
-                :key="game"
-                class="bg-card hover:bg-muted/50 border-border/50 hover:border-primary/30 transition-all cursor-default"
-            >
-                <CardHeader
-                    class="p-4 flex flex-col items-center justify-center text-center min-h-20"
-                >
-                    <CardTitle
-                        class="text-[0.95rem] font-medium leading-snug"
-                        >{{ game }}</CardTitle
-                    >
-                </CardHeader>
-            </Card> -->
             <Item v-for="game in filteredGames" :key="game">
                 <ItemContent>{{ game }}</ItemContent>
             </Item>
@@ -227,7 +213,7 @@ const filteredGames = computed(() => {
         <!-- Empty State -->
         <div
             v-else
-            class="text-center py-20 text-muted-foreground border border-dashed rounded-3xl bg-muted/20"
+            class="text-center py-20 text-muted-foreground border border-dashed rounded-lg bg-muted/20"
         >
             <p class="text-lg font-medium">
                 没有找到包含 “{{ searchQuery }}” 的游戏

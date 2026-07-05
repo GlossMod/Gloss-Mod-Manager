@@ -2,6 +2,7 @@
 import { useDark, useToggle } from "@vueuse/core";
 import { Moon, Sun, Github, Menu, X } from "lucide-vue-next";
 import { ref } from "vue";
+import { Button } from "@/components/ui/button";
 
 const isDark = useDark();
 const toggleDark = useToggle(isDark);
@@ -22,7 +23,7 @@ const toggleMenu = () => {
 
 <template>
     <header
-        class="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60"
+        class="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95"
     >
         <div
             class="container flex h-14 max-w-screen-2xl items-center px-4 md:px-8 mx-auto"
@@ -82,26 +83,21 @@ const toggleMenu = () => {
             <!-- Right controls -->
             <div class="flex flex-1 items-center justify-end space-x-2">
                 <nav class="flex items-center space-x-1">
-                    <a
-                        href="https://github.com/GlossMod/Gloss-Mod-Manager"
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        <div
-                            class="h-9 w-9 px-0 py-2 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                    <Button variant="ghost" size="icon" as-child>
+                        <a
+                            href="https://github.com/GlossMod/Gloss-Mod-Manager"
+                            target="_blank"
+                            rel="noreferrer"
                         >
                             <Github class="h-4 w-4" />
                             <span class="sr-only">GitHub</span>
-                        </div>
-                    </a>
-                    <button
-                        @click="toggleDark()"
-                        class="h-9 w-9 px-0 py-2 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-                    >
+                        </a>
+                    </Button>
+                    <Button variant="ghost" size="icon" @click="toggleDark()">
                         <Sun v-if="isDark" class="h-4 w-4" />
                         <Moon v-else class="h-4 w-4" />
                         <span class="sr-only">Toggle dark mode</span>
-                    </button>
+                    </Button>
                 </nav>
             </div>
         </div>

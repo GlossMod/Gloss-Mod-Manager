@@ -132,7 +132,7 @@ const toggleGroup = (title: string) => {
 
         <!-- Sidebar Navigation -->
         <aside
-            class="hidden lg:block w-full lg:sticky lg:top-20 self-start lg:h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border/70 bg-background/70 p-3 shadow-sm"
+            class="hidden lg:block w-full lg:sticky lg:top-20 self-start lg:h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border bg-background p-3"
         >
             <div class="space-y-1">
                 <div v-for="section in docsNavGroups" :key="section.title">
@@ -186,7 +186,7 @@ const toggleGroup = (title: string) => {
 
         <aside
             v-if="pageHeadings.length > 0"
-            class="hidden xl:block sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border/70 bg-background/70 p-4 shadow-sm"
+            class="hidden xl:block sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border bg-background p-4"
         >
             <div
                 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground"
@@ -226,9 +226,9 @@ const toggleGroup = (title: string) => {
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
-    border-radius: 1rem;
+    border-radius: var(--radius);
     padding: 1.5rem;
-    box-shadow: 0 16px 40px rgb(15 23 42 / 0.05);
+    border: 1px solid var(--border);
     background-color: transparent;
 }
 
@@ -252,8 +252,8 @@ const toggleGroup = (title: string) => {
     width: 100%;
     max-width: 100%;
     margin-bottom: 1.5rem;
-    border: 1px solid var(--borderColor-muted);
-    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     aspect-ratio: 16 / 9;
 }
 

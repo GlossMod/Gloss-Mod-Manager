@@ -44,7 +44,7 @@ useSeoMeta({
 <template>
     <div class="flex flex-col mb-20 space-y-24">
         <!-- Hero Section -->
-        <section class="relative pt-24 pb-16 md:pt-32 overflow-hidden">
+        <section class="relative pt-24 pb-16 md:pt-32">
             <div class="container max-w-7xl mx-auto px-4 md:px-8 text-center">
                 <h1
                     class="text-4xl md:text-6xl font-extrabold tracking-tight text-foreground max-w-4xl mx-auto leading-tight"
@@ -53,10 +53,7 @@ useSeoMeta({
                 </h1>
                 <Badge variant="secondary" class="text-xl pl-4 pr-4">
                     你的下一代
-                    <span
-                        class="bg-clip-text bg-linear-to-r from-primary to-primary/60"
-                        >智能游戏模组</span
-                    >
+                    <span class="font-semibold text-foreground">智能游戏模组</span>
                     管理器
                 </Badge>
                 <p
@@ -103,18 +100,6 @@ useSeoMeta({
                     </Button>
                 </div>
             </div>
-
-            <!-- Background decoration -->
-            <div
-                class="absolute -z-10 top-0 left-1/2 w-full -translate-x-1/2 overflow-hidden flex justify-center pointer-events-none opacity-40 dark:opacity-20 blur-3xl"
-            >
-                <div
-                    class="w-200 h-100 bg-primary rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"
-                ></div>
-                <div
-                    class="w-150 h-100 bg-sky-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000 -ml-32"
-                ></div>
-            </div>
         </section>
 
         <!-- Key Advantages (V1 -> V2) -->
@@ -130,7 +115,7 @@ useSeoMeta({
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card
-                    class="bg-background/50 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-colors"
+                    class="bg-card hover:border-foreground/20 transition-colors"
                 >
                     <CardHeader>
                         <CardTitle class="flex items-center gap-4 mb-2">
@@ -150,7 +135,7 @@ useSeoMeta({
                 </Card>
 
                 <Card
-                    class="bg-background/50 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-colors"
+                    class="bg-card hover:border-foreground/20 transition-colors"
                 >
                     <CardHeader>
                         <CardTitle class="flex items-center gap-4 mb-2">
@@ -169,7 +154,7 @@ useSeoMeta({
                 </Card>
 
                 <Card
-                    class="bg-background/50 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-colors"
+                    class="bg-card hover:border-foreground/20 transition-colors"
                 >
                     <CardHeader>
                         <CardTitle class="flex items-center gap-4 mb-2">

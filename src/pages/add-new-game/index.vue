@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
     Dialog,
     DialogDescription,
@@ -155,6 +156,7 @@ const pageMessage = ref("");
 const isSubmitting = ref(false);
 const isRequestDialogOpen = ref(hasInitialDraft);
 const selectedLabelName = ref(allLabelsFilterValue);
+const titleSearchQuery = ref("");
 
 const currentDraft = computed(() => {
     const request = normalizeRequest(form);
@@ -224,14 +226,20 @@ const activeLabelName = computed(() =>
         ? ""
         : selectedLabelName.value,
 );
+const activeTitleSearch = computed(() =>
+    titleSearchQuery.value.trim().toLocaleLowerCase("zh-CN"),
+);
 
 const filteredDiscussionList = computed(() => {
-    if (!activeLabelName.value) {
-        return discussionList.value;
-    }
-
     return discussionList.value.filter((discussion) =>
-        discussion.labels.some((label) => label.name === activeLabelName.value),
+        (!activeLabelName.value ||
+            discussion.labels.some(
+                (label) => label.name === activeLabelName.value,
+            )) &&
+        (!activeTitleSearch.value ||
+            discussion.title
+                .toLocaleLowerCase("zh-CN")
+                .includes(activeTitleSearch.value)),
     );
 });
 
@@ -500,6 +508,13 @@ onMounted(async () => {
                     <div
                         class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center"
                     >
+                        <Input
+                            v-model="titleSearchQuery"
+                            type="search"
+                            placeholder="搜索标题..."
+                            aria-label="按标题搜索讨论"
+                            class="w-full sm:w-[240px]"
+                        />
                         <Select
                             v-model="selectedLabelName"
                             :disabled="!discussionLabelOptions.length"
@@ -643,13 +658,12 @@ onMounted(async () => {
                                         >
                                             游戏名称
                                         </label>
-                                        <input
+                                        <Input
                                             id="game-name"
                                             v-model="form.gameName"
                                             type="text"
                                             maxlength="80"
                                             placeholder="例如：Stellar Blade"
-                                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         />
                                     </div>
 
@@ -660,12 +674,11 @@ onMounted(async () => {
                                         >
                                             游戏官网 / 商店地址
                                         </label>
-                                        <input
+                                        <Input
                                             id="source-url"
                                             v-model="form.sourceUrl"
                                             type="url"
                                             placeholder="https://store.steampowered.com/app/..."
-                                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         />
                                     </div>
 
@@ -676,12 +689,11 @@ onMounted(async () => {
                                         >
                                             Mod 地址
                                         </label>
-                                        <input
+                                        <Input
                                             id="mod-url"
                                             v-model="form.modUrl"
                                             type="url"
                                             placeholder="https://www.nexusmods.com/..."
-                                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         />
                                     </div>
                                     <div class="space-y-2">
@@ -691,12 +703,11 @@ onMounted(async () => {
                                         >
                                             补充信息（选填）
                                         </label>
-                                        <input
+                                        <Input
                                             id="additional-info"
                                             v-model="form.additionalInfo"
                                             type="text"
                                             placeholder="例如：适配规则、安装目录结构、测试版本或已有 Mod 生态"
-                                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         />
                                     </div>
 
@@ -952,7 +963,7 @@ onMounted(async () => {
                         v-else-if="discussionList.length"
                         class="p-8 text-center text-sm text-muted-foreground"
                     >
-                        当前 Label 下没有匹配的新游戏请求。
+                        当前筛选条件下没有匹配的新游戏请求。
                     </div>
 
                     <div

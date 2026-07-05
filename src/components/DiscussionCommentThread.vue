@@ -7,6 +7,7 @@ import { computed, ref } from "vue";
 import { CornerDownRight, Send } from "lucide-vue-next";
 import DiscussionMarkdown from "@/components/DiscussionMarkdown.vue";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
     formatDiscussionDate,
     getReactionState,
@@ -162,7 +163,7 @@ const submitReply = async () => {
 
                 <div
                     v-if="isReplyComposerOpen"
-                    class="space-y-3 rounded-md border bg-background/70 p-3"
+                    class="space-y-3 rounded-md border bg-muted/10 p-3"
                 >
                     <div
                         v-if="currentReplyError"
@@ -171,12 +172,11 @@ const submitReply = async () => {
                         {{ currentReplyError }}
                     </div>
 
-                    <textarea
+                    <Textarea
                         v-model="replyBody"
                         rows="3"
                         placeholder="回复这条评论，支持 Markdown..."
-                        class="flex w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    ></textarea>
+                    />
 
                     <div class="flex items-center justify-between gap-3">
                         <p class="text-xs text-muted-foreground">

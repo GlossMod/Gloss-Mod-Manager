@@ -114,7 +114,7 @@ function getDownloadDetail(card: PlatformCard, item?: DownloadItem) {
                     'transition-colors',
                     detectedPlatform === card.key
                         ? 'border-primary/50'
-                        : 'hover:border-primary/30',
+                        : 'hover:border-foreground/20',
                 ]"
             >
                 <CardHeader>
@@ -174,7 +174,7 @@ function getDownloadDetail(card: PlatformCard, item?: DownloadItem) {
                         <div
                             v-for="item in groupedDownloads[card.key]"
                             :key="item.id"
-                            class="grid min-h-11 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border px-3 text-left transition-colors hover:border-primary/30 hover:bg-accent/50"
+                            class="grid min-h-11 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border px-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent/50"
                         >
                             <span
                                 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide min-w-12"
@@ -199,7 +199,7 @@ function getDownloadDetail(card: PlatformCard, item?: DownloadItem) {
 
                         <div
                             v-if="card.key === 'macos'"
-                            class="grid min-h-11 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border px-3 text-left transition-colors hover:border-primary/30 hover:bg-accent/50"
+                            class="grid min-h-11 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border px-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent/50"
                         >
                             <span
                                 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide min-w-12"
