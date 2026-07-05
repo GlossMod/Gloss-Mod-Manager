@@ -10,6 +10,7 @@
         "postinstall": "nuxt prepare"
     },
     "dependencies": {
+        "@lucide/vue": "^1.23.0",
         "@pinia/nuxt": "^0.11.3",
         "@tailwindcss/vite": "^4.2.4",
         "@vueuse/core": "^14.3.0",
@@ -20,7 +21,7 @@
         "markdown-it": "^14.1.1",
         "nuxt": "^4.2.0",
         "pinia": "^3.0.4",
-        "reka-ui": "^2.9.7",
+        "reka-ui": "^2.10.1",
         "tailwind-merge": "^3.5.0",
         "tailwindcss": "^4.2.4",
         "vue": "^3.5.32"

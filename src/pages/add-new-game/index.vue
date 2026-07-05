@@ -14,6 +14,14 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     CheckCircle2,
     ExternalLink,
     Github,
@@ -68,6 +76,7 @@ useSeoMeta({
 
 const route = useRoute();
 const router = useRouter();
+const allLabelsFilterValue = "__all__";
 
 const createDiscussionExcerpt = (body: string) => {
     const preview = body
@@ -83,6 +92,41 @@ const createDiscussionExcerpt = (body: string) => {
     }
 
     return preview.length > 180 ? `${preview.slice(0, 177)}...` : preview;
+};
+
+const normalizeLabelColor = (color: string) => {
+    const normalized = color.trim().replace(/^#/, "");
+
+    return /^[0-9a-fA-F]{6}$/.test(normalized) ? `#${normalized}` : "";
+};
+
+const getLabelTextColor = (backgroundColor: string) => {
+    const color = normalizeLabelColor(backgroundColor);
+
+    if (!color) {
+        return "";
+    }
+
+    const red = Number.parseInt(color.slice(1, 3), 16);
+    const green = Number.parseInt(color.slice(3, 5), 16);
+    const blue = Number.parseInt(color.slice(5, 7), 16);
+    const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+
+    return luminance > 150 ? "#24292f" : "#ffffff";
+};
+
+const getLabelBadgeStyle = (color: string) => {
+    const backgroundColor = normalizeLabelColor(color);
+
+    if (!backgroundColor) {
+        return undefined;
+    }
+
+    return {
+        backgroundColor,
+        borderColor: backgroundColor,
+        color: getLabelTextColor(backgroundColor),
+    };
 };
 
 const initialRequest = normalizeRequest({
@@ -110,6 +154,7 @@ const formError = ref("");
 const pageMessage = ref("");
 const isSubmitting = ref(false);
 const isRequestDialogOpen = ref(hasInitialDraft);
+const selectedLabelName = ref(allLabelsFilterValue);
 
 const currentDraft = computed(() => {
     const request = normalizeRequest(form);
@@ -145,6 +190,50 @@ const requestFields = computed(() => [
           ]
         : []),
 ]);
+
+const discussionLabelOptions = computed(() => {
+    const labels = new Map<
+        string,
+        {
+            name: string;
+            count: number;
+            color: string;
+            description: string | null;
+        }
+    >();
+
+    for (const discussion of discussionList.value) {
+        for (const label of discussion.labels) {
+            const currentLabel = labels.get(label.name);
+
+            labels.set(label.name, {
+                name: label.name,
+                count: (currentLabel?.count || 0) + 1,
+                color: currentLabel?.color || label.color,
+                description: currentLabel?.description || label.description,
+            });
+        }
+    }
+
+    return [...labels.values()]
+        .sort((current, next) => current.name.localeCompare(next.name, "zh-CN"));
+});
+
+const activeLabelName = computed(() =>
+    selectedLabelName.value === allLabelsFilterValue
+        ? ""
+        : selectedLabelName.value,
+);
+
+const filteredDiscussionList = computed(() => {
+    if (!activeLabelName.value) {
+        return discussionList.value;
+    }
+
+    return discussionList.value.filter((discussion) =>
+        discussion.labels.some((label) => label.name === activeLabelName.value),
+    );
+});
 
 const draftBackLink = computed(() => {
     const href = router.resolve({
@@ -405,10 +494,57 @@ onMounted(async () => {
                     <div class="flex items-center gap-3">
                         <h2 class="text-xl font-semibold">全部讨论</h2>
                         <Badge variant="secondary">{{
-                            discussionList.length
+                            filteredDiscussionList.length
                         }}</Badge>
                     </div>
-                    <div class="flex items-center gap-3">
+                    <div
+                        class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center"
+                    >
+                        <Select
+                            v-model="selectedLabelName"
+                            :disabled="!discussionLabelOptions.length"
+                        >
+                            <SelectTrigger
+                                class="w-full sm:w-[220px]"
+                                aria-label="按 Labels 筛选讨论"
+                            >
+                                <SelectValue placeholder="按 Labels 筛选" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectGroup>
+                                    <SelectItem :value="allLabelsFilterValue">
+                                        全部 Labels
+                                    </SelectItem>
+                                    <SelectItem
+                                        v-for="label in discussionLabelOptions"
+                                        :key="label.name"
+                                        :value="label.name"
+                                    >
+                                        <span
+                                            class="flex min-w-0 items-center gap-2"
+                                        >
+                                            <span
+                                                class="size-2 shrink-0 rounded-full"
+                                                :style="{
+                                                    backgroundColor:
+                                                        normalizeLabelColor(
+                                                            label.color,
+                                                        ),
+                                                }"
+                                            ></span>
+                                            <span class="truncate">{{
+                                                label.name
+                                            }}</span>
+                                            <span
+                                                class="text-muted-foreground"
+                                            >
+                                                ({{ label.count }})
+                                            </span>
+                                        </span>
+                                    </SelectItem>
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
                         <DialogTrigger as-child>
                             <Button @click="openRequestDialog">
                                 <PlusCircle class="mr-2 h-4 w-4" />
@@ -688,9 +824,12 @@ onMounted(async () => {
                         正在加载讨论列表...
                     </div>
 
-                    <div v-else-if="discussionList.length" class="divide-y">
+                    <div
+                        v-else-if="filteredDiscussionList.length"
+                        class="divide-y"
+                    >
                         <button
-                            v-for="discussion in discussionList"
+                            v-for="discussion in filteredDiscussionList"
                             :key="discussion.number"
                             type="button"
                             class="w-full overflow-hidden p-4 text-left transition-colors hover:bg-muted/30"
@@ -699,11 +838,25 @@ onMounted(async () => {
                             <div class="flex items-start justify-between gap-4">
                                 <div class="min-w-0 space-y-1">
                                     <div
-                                        class="flex min-w-0 items-center gap-2 text-base font-medium text-primary/90"
+                                        class="flex min-w-0 flex-wrap items-center gap-2"
                                     >
-                                        <span class="truncate">{{
-                                            discussion.title
-                                        }}</span>
+                                        <Badge
+                                            v-for="label in discussion.labels"
+                                            :key="label.id"
+                                            :title="label.description || label.name"
+                                            variant="outline"
+                                            class="max-w-40 truncate"
+                                            :style="
+                                                getLabelBadgeStyle(label.color)
+                                            "
+                                        >
+                                            {{ label.name }}
+                                        </Badge>
+                                        <span
+                                            class="min-w-0 flex-[1_1_14rem] truncate text-base font-medium text-primary/90"
+                                        >
+                                            {{ discussion.title }}
+                                        </span>
                                     </div>
                                     <div
                                         class="line-clamp-2 break-all text-sm text-muted-foreground [overflow-wrap:anywhere]"
@@ -793,6 +946,13 @@ onMounted(async () => {
                                 </div>
                             </div>
                         </button>
+                    </div>
+
+                    <div
+                        v-else-if="discussionList.length"
+                        class="p-8 text-center text-sm text-muted-foreground"
+                    >
+                        当前 Label 下没有匹配的新游戏请求。
                     </div>
 
                     <div

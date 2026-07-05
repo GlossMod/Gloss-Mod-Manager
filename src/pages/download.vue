@@ -38,36 +38,23 @@ useSeoMeta({
 </script>
 
 <template>
-    <div
-        class="relative flex flex-col gap-10 md:gap-14 py-8 md:py-10 overflow-hidden"
-    >
-        <!-- Tech Dot Background -->
-
-        <section
-            class="container max-w-7xl mx-auto px-4 text-center md:px-8 relative z-10"
-        >
-            <Badge
-                variant="outline"
-                class="mb-6 backdrop-blur-md border-primary/30 text-primary bg-primary/5 px-3 py-1 font-mono"
-            >
+    <div class="flex flex-col gap-10 md:gap-14 py-8 md:py-10">
+        <section class="container max-w-7xl mx-auto px-4 text-center md:px-8">
+            <Badge variant="secondary" class="mb-6 px-3 py-1">
                 {{ latestVersion || "..." }}
             </Badge>
             <h1
-                class="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-linear-to-br from-foreground to-foreground/50 mb-6 drop-shadow-sm"
+                class="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-foreground mb-6"
             >
                 Gloss Mod Manager
             </h1>
             <p
-                class="text-base md:text-xl text-muted-foreground/80 max-w-2xl mx-auto mb-8 md:mb-10 font-light tracking-wide"
+                class="text-base md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 md:mb-10"
             >
                 安全免费地管理游戏 Mod。选择适合您的操作系统，立即下载安装。
             </p>
             <div class="flex items-center justify-center gap-4">
-                <Button
-                    variant="outline"
-                    class="border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 rounded-full px-6"
-                    as-child
-                >
+                <Button variant="outline" as-child>
                     <a href="https://pan.aoe.top/Tools/GMM" target="_blank">
                         下载更多版本 <ArrowRight class="ml-2 h-4 w-4" />
                     </a>
@@ -76,7 +63,6 @@ useSeoMeta({
         </section>
 
         <Downloads
-            class="relative z-10"
             :items="downloads"
             :detected-platform="detectedPlatform"
             :version="latestVersion"

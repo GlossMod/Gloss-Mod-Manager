@@ -37,6 +37,13 @@ export interface DiscussionAuthor {
     avatarUrl: string;
 }
 
+export interface DiscussionLabel {
+    id: string;
+    name: string;
+    color: string;
+    description: string | null;
+}
+
 export interface DiscussionComment {
     id: string;
     body: string;
@@ -56,6 +63,7 @@ export interface DiscussionSummary {
     author: DiscussionAuthor | null;
     commentCount: number;
     reactions: DiscussionReactionGroup[];
+    labels: DiscussionLabel[];
 }
 
 export interface DiscussionDetail extends DiscussionSummary {
@@ -157,6 +165,7 @@ export const toDiscussionSummary = (
     author: discussion.author,
     commentCount: discussion.commentCount,
     reactions: discussion.reactions,
+    labels: discussion.labels,
 });
 
 export const defaultAuthSession: AuthSessionResponse = {

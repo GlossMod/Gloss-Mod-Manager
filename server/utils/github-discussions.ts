@@ -29,6 +29,13 @@ interface GitHubActor {
     avatarUrl: string;
 }
 
+interface GraphqlLabel {
+    id: string;
+    name: string;
+    color: string;
+    description: string | null;
+}
+
 interface GraphqlReactionGroup {
     content: ReactionContent;
     viewerHasReacted: boolean;
@@ -66,6 +73,9 @@ interface GraphqlDiscussionNode {
         nodes?: GraphqlDiscussionCommentNode[];
     };
     reactionGroups: GraphqlReactionGroup[];
+    labels: {
+        nodes?: GraphqlLabel[];
+    };
 }
 
 export interface DiscussionConfig {
@@ -100,6 +110,13 @@ export interface DiscussionAuthor {
     avatarUrl: string;
 }
 
+export interface DiscussionLabel {
+    id: string;
+    name: string;
+    color: string;
+    description: string | null;
+}
+
 export interface DiscussionComment {
     id: string;
     body: string;
@@ -119,6 +136,7 @@ export interface DiscussionSummary {
     author: DiscussionAuthor | null;
     commentCount: number;
     reactions: DiscussionReactionGroup[];
+    labels: DiscussionLabel[];
 }
 
 export interface DiscussionDetail extends DiscussionSummary {
@@ -224,6 +242,16 @@ const toReactionGroups = (
         }))
         .filter((group) => group.count > 0 || group.viewerHasReacted);
 
+const toDiscussionLabels = (
+    labels: GraphqlDiscussionNode["labels"],
+): DiscussionLabel[] =>
+    (labels.nodes || []).map((label) => ({
+        id: label.id,
+        name: label.name,
+        color: label.color,
+        description: label.description,
+    }));
+
 const toDiscussionComment = (
     comment: GraphqlDiscussionCommentNode,
 ): DiscussionComment => ({
@@ -247,6 +275,7 @@ const toDiscussionSummary = (
     author: toAuthor(discussion.author),
     commentCount: discussion.comments.totalCount,
     reactions: toReactionGroups(discussion.reactionGroups),
+    labels: toDiscussionLabels(discussion.labels),
 });
 
 const isNewGamesCategory = (
@@ -530,6 +559,14 @@ export const listNewGameDiscussions = async (
                         comments {
                             totalCount
                         }
+                        labels(first: 20) {
+                            nodes {
+                                id
+                                name
+                                color
+                                description
+                            }
+                        }
                         reactionGroups {
                             content
                             viewerHasReacted
@@ -595,6 +632,14 @@ export const getDiscussionByNumber = async (
                     category {
                         id
                         name
+                    }
+                    labels(first: 20) {
+                        nodes {
+                            id
+                            name
+                            color
+                            description
+                        }
                     }
                     comments(first: 50) {
                         totalCount
