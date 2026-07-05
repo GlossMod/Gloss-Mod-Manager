@@ -8,10 +8,11 @@ import {
     createWebPageJsonLd,
     useSeoMeta,
 } from "@/lib/seo";
+import { supportedGames, supportedGamesCount } from "@/lib/supported-games";
 
 const pageTitle = "支持的游戏列表";
 const pageDescription =
-    "查看 Gloss Mod Manager 支持的 150 多款热门游戏，覆盖赛博朋克 2077、博德之门 3、艾尔登法环、黑神话：悟空等游戏的 Mod 管理。";
+    `查看 Gloss Mod Manager 当前支持的 ${supportedGamesCount} 款热门游戏，覆盖赛博朋克 2077、博德之门 3、艾尔登法环、黑神话：悟空等游戏的 Mod 管理。`;
 
 useSeoMeta({
     title: pageTitle,
@@ -27,155 +28,29 @@ useSeoMeta({
     ],
 });
 
-// 静态抽取的支持游戏列表
-const gamesList = [
-    "艾尔登法环",
-    "只狼: 影逝二度",
-    "霍格沃兹之遗",
-    "求生之路2",
-    "赛博朋克 2077",
-    "模拟人生4",
-    "怪物猎人: 世界",
-    "怪物猎人: 崛起",
-    "怪物猎人: 荒野",
-    "鬼谷八荒",
-    "太吾绘卷",
-    "觅长生",
-    "噬血代码",
-    "生化危机4 重制版",
-    "生化危机2 重制版",
-    "生化危机3 重制版",
-    "生化危机8",
-    "星露谷物语",
-    "巫师 3: 狂猎",
-    "辐射 4",
-    "骑马与砍杀 2: 霸主",
-    "饥荒 & 联机版",
-    "博德之门 3",
-    "星空",
-    "装甲核心 6",
-    "最终幻想 7 重制版",
-    "最终幻想 7 重生",
-    "匹诺曹的谎言",
-    "神界: 原罪 2",
-    "边缘世界",
-    "全面战争: 三国",
-    "全面战争: 战锤 3",
-    "师父 (Sifu)",
-    "鬼泣 5",
-    "上古卷轴 V: 天际 重制版",
-    "无人深空",
-    "七日杀",
-    "动物园之星",
-    "GTA SA 最终版",
-    "荒野大镖客: 救赎 2",
-    "荒野大镖客",
-    "仁王 2",
-    "仁王 3",
-    "腐烂国度 2",
-    "深海迷航",
-    "龙腾世纪: 影障守护者",
-    "城市: 天际线 2",
-    "戴森球计划",
-    "大侠立志传",
-    "雨中冒险 2",
-    "森林之子",
-    "逸剑风云决",
-    "暖雪",
-    "欧洲卡车模拟 2",
-    "美洲卡车模拟",
-    "侠盗猎车手 5 (含增强版)",
-    "致命公司",
-    "纪元 1800",
-    "纪元 117：罗马和平",
-    "人类 (Humankind)",
-    "双点校园",
-    "文明 6",
-    "文明 7",
-    "泰坦陨落 2",
-    "幻兽帕鲁",
-    "铁拳 8",
-    "如龙 8",
-    "剑士 (Kenshi)",
-    "缉私警察",
-    "英灵神殿",
-    "街头霸王 6",
-    "皇牌空战 7",
-    "咩咩启示录",
-    "群星",
-    "仙剑奇侠传 7",
-    "龙之信条 2",
-    "原子之心",
-    "看门狗 2",
-    "木卫四协议",
-    "Jump 大乱斗",
-    "无双大蛇 3",
-    "漫漫长夜",
-    "十字军之王 3",
-    "猎人: 荒野的召唤",
-    "天国: 拯救",
-    "天国: 拯救 2",
-    "消逝的光芒 2",
-    "下一站江湖 2",
-    "山门与幻境",
-    "庄园领主",
-    "哈迪斯 2",
-    "家园 3",
-    "道衍诀",
-    "夜族崛起",
-    "对马岛之魂",
-    "堕落之主",
-    "暗黑地牢 2",
-    "黑暗地牢",
-    "地狱之刃 2",
-    "泰拉瑞亚",
-    "坎巴拉太空计划",
-    "远征: 泥泞奔驰",
-    "活侠传",
-    "海山：昆仑镜",
-    "燧石枪：黎明之围",
-    "铁血联盟 3",
-    "异形工厂 2",
-    "龙珠战士 Z",
-    "黑神话: 悟空",
-    "原神",
-    "刀剑江湖路",
-    "冰汽时代 2",
-    "高达创坏者 4",
-    "战锤 40K: 星际战士 2",
-    "丧尸围城豪华复刻版",
-    "潜行者 2",
-    "七龙珠 电光炸裂！ZERO",
-    "勇者斗恶龙 III HD-2D Remake",
-    "最后的生还者 第二部",
-    "英雄立志传 三国志",
-    "上古卷轴 4: 湮灭 重制版",
-    "光与影: 33号远征队",
-    "剑星 (Stellar Blade)",
-    "明末: 渊虚之羽",
-    "空洞骑士: 丝之歌",
-    "寂静岭 F",
-    "无主之地 4",
-    "龙崖",
-    "逃离鸭科夫",
-    "生化危机9：安魂曲",
-    "正当防卫 3",
-    "X4 基石",
-].sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-
 const searchQuery = ref("");
 
 const filteredGames = computed(() => {
-    if (!searchQuery.value.trim()) return gamesList;
-    const q = searchQuery.value.toLowerCase();
-    return gamesList.filter((g) => g.toLowerCase().includes(q));
+    const q = searchQuery.value.trim().toLowerCase();
+    if (!q) return supportedGames;
+
+    return supportedGames.filter((game) =>
+        [game.name, game.sourceName, String(game.steamAppId)].some((value) =>
+            value.toLowerCase().includes(q),
+        ),
+    );
 });
+
+const getSteamUrl = (steamAppId: number) =>
+    `https://store.steampowered.com/app/${steamAppId}`;
 </script>
 
 <template>
     <div class="container max-w-7xl mx-auto px-4 md:px-8 py-12 lg:py-20 mb-16">
         <div class="text-center max-w-3xl mx-auto mb-16">
-            <Badge variant="outline" class="mb-4">超 150+ 热门大作</Badge>
+            <Badge variant="outline" class="mb-4">
+                {{ supportedGamesCount }} 款热门大作
+            </Badge>
             <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
                 全量支持的游戏库
             </h1>
@@ -195,7 +70,7 @@ const filteredGames = computed(() => {
             <input
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索游戏名称或系列..."
+                placeholder="搜索中文名、英文名或 Steam ID..."
                 class="flex h-12 w-full rounded-md border border-input bg-background pl-10 pr-4 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
             />
         </div>
@@ -203,11 +78,57 @@ const filteredGames = computed(() => {
         <!-- Games Grid -->
         <div
             v-if="filteredGames.length > 0"
-            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
         >
-            <Item v-for="game in filteredGames" :key="game">
-                <ItemContent>{{ game }}</ItemContent>
-            </Item>
+            <article
+                v-for="game in filteredGames"
+                :key="game.key"
+                class="group overflow-hidden rounded-md border bg-card text-card-foreground transition-colors hover:border-foreground/20"
+            >
+                <div class="aspect-[247/139] overflow-hidden bg-muted">
+                    <img
+                        :src="game.cover"
+                        :alt="`${game.name} 封面`"
+                        loading="lazy"
+                        decoding="async"
+                        referrerpolicy="no-referrer"
+                        class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    />
+                </div>
+                <div class="flex min-h-[8.5rem] flex-col gap-3 p-4">
+                    <div class="min-w-0">
+                        <h2 class="line-clamp-2 text-base font-semibold leading-snug">
+                            {{ game.name }}
+                        </h2>
+                        <p class="mt-1 truncate text-sm text-muted-foreground">
+                            {{ game.sourceName }}
+                        </p>
+                    </div>
+                    <div class="mt-auto flex flex-wrap items-center gap-2">
+                        <a
+                            v-if="game.steamAppId > 0"
+                            :href="getSteamUrl(game.steamAppId)"
+                            target="_blank"
+                            rel="noreferrer"
+                            class="inline-flex"
+                        >
+                            <Badge
+                                variant="secondary"
+                                class="font-mono text-[11px] transition-colors hover:bg-accent"
+                            >
+                                Steam {{ game.steamAppId }}
+                            </Badge>
+                        </a>
+                        <Badge
+                            v-else
+                            variant="outline"
+                            class="font-mono text-[11px]"
+                        >
+                            非 Steam
+                        </Badge>
+                    </div>
+                </div>
+            </article>
         </div>
 
         <!-- Empty State -->

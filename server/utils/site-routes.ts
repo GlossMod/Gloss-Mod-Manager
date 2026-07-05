@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const staticRoutes = ["/", "/download", "/games", "/add-new-game", "/docs"];
+const staticRoutes = [
+    "/",
+    "/download",
+    "/games",
+    "/add-new-game",
+    "/crowdfunding",
+    "/docs",
+];
 
 const toDocRoute = (relativeFilePath: string) => {
     const docPath = relativeFilePath.replace(/\\/g, "/").replace(/\.md$/i, "");
@@ -68,7 +75,11 @@ export const getRoutePriority = (route: string) => {
         return "1.0";
     }
 
-    if (["/download", "/games", "/add-new-game", "/docs"].includes(route)) {
+    if (
+        ["/download", "/games", "/add-new-game", "/crowdfunding", "/docs"].includes(
+            route,
+        )
+    ) {
         return "0.9";
     }
 

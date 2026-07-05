@@ -47,9 +47,9 @@ interface GraphqlReactionGroup {
 interface GraphqlDiscussionCommentNode {
     id: string;
     body: string;
-    createdAt: string;
-    author: GitHubActor | null;
-    reactionGroups: GraphqlReactionGroup[];
+    createdAt?: string;
+    author?: GitHubActor | null;
+    reactionGroups?: GraphqlReactionGroup[];
     replies?: {
         totalCount: number;
         nodes?: GraphqlDiscussionCommentNode[];
@@ -72,7 +72,7 @@ interface GraphqlDiscussionNode {
         totalCount: number;
         nodes?: GraphqlDiscussionCommentNode[];
     };
-    reactionGroups: GraphqlReactionGroup[];
+    reactionGroups?: GraphqlReactionGroup[];
     labels: {
         nodes?: GraphqlLabel[];
     };
@@ -181,6 +181,32 @@ const getRuntimeDiscussionConfig = () => {
 const getGitHubToken = (token?: string) =>
     token || getRuntimeDiscussionConfig().token;
 
+const isPersonalAccessTokenAccessError = (message: string) =>
+    /Resource not accessible by personal access token/i.test(message);
+
+export const isGitHubTokenAccessError = (error: unknown) => {
+    const maybeError = error as {
+        statusCode?: number;
+        statusMessage?: string;
+        message?: string;
+        data?: { githubMessage?: string };
+    };
+    const message = [
+        maybeError.statusMessage,
+        maybeError.message,
+        maybeError.data?.githubMessage,
+    ]
+        .filter(Boolean)
+        .join("\n");
+
+    return (
+        maybeError.statusCode === 403 &&
+        /GitHub token cannot access|Resource not accessible by personal access token/i.test(
+            message,
+        )
+    );
+};
+
 const requestGitHubGraphql = async <TData>(
     token: string,
     query: string,
@@ -200,11 +226,21 @@ const requestGitHubGraphql = async <TData>(
     });
 
     if (response.errors?.length) {
+        const githubMessage = response.errors
+            .map((error) => error.message)
+            .join("; ");
+        const isAccessError =
+            isPersonalAccessTokenAccessError(githubMessage);
+
         throw createError({
-            statusCode: 502,
-            statusMessage: response.errors
-                .map((error) => error.message)
-                .join("; "),
+            statusCode: isAccessError ? 403 : 502,
+            statusMessage: isAccessError
+                ? [
+                      "GitHub token cannot access this Discussion.",
+                      "Sign in with GitHub or configure a token with repository discussion write access.",
+                  ].join(" ")
+                : githubMessage,
+            data: { githubMessage },
         });
     }
 
@@ -257,8 +293,8 @@ const toDiscussionComment = (
 ): DiscussionComment => ({
     id: comment.id,
     body: comment.body,
-    createdAt: comment.createdAt,
-    author: toAuthor(comment.author),
+    createdAt: comment.createdAt || "",
+    author: toAuthor(comment.author || null),
     reactions: toReactionGroups(comment.reactionGroups),
     replies: (comment.replies?.nodes || []).map(toDiscussionComment),
 });
@@ -539,7 +575,7 @@ export const listNewGameDiscussions = async (
         accessToken,
         `query($owner: String!, $name: String!) {
             repository(owner: $owner, name: $name) {
-                discussions(first: 20, orderBy: { field: CREATED_AT, direction: DESC }) {
+                discussions(first: 100, orderBy: { field: CREATED_AT, direction: DESC }) {
                     nodes {
                         id
                         number
@@ -595,6 +631,93 @@ export const listNewGameDiscussions = async (
         .map(toDiscussionSummary);
 };
 
+export const listNewGameDiscussionDetails = async (
+    token?: string,
+): Promise<DiscussionDetail[]> => {
+    const accessToken = getGitHubToken(token);
+
+    if (!accessToken) {
+        throw createError({
+            statusCode: 501,
+            statusMessage: "GitHub token is required to load discussions.",
+        });
+    }
+
+    const config = await getNewGamesDiscussionConfig(accessToken);
+    const data = await requestGitHubGraphql<{
+        repository: {
+            discussions: {
+                nodes: GraphqlDiscussionNode[];
+            };
+        } | null;
+    }>(
+        accessToken,
+        `query($owner: String!, $name: String!) {
+            repository(owner: $owner, name: $name) {
+                discussions(first: 100, orderBy: { field: CREATED_AT, direction: DESC }) {
+                    nodes {
+                        id
+                        number
+                        title
+                        body
+                        url
+                        createdAt
+                        author {
+                            login
+                            url
+                            avatarUrl
+                        }
+                        category {
+                            id
+                            name
+                        }
+                        labels(first: 20) {
+                            nodes {
+                                id
+                                name
+                                color
+                                description
+                            }
+                        }
+                        comments(last: 50) {
+                            totalCount
+                            nodes {
+                                id
+                                body
+                                createdAt
+                                author {
+                                    login
+                                    url
+                                    avatarUrl
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }`,
+        { owner: GITHUB_REPO_OWNER, name: GITHUB_REPO_NAME },
+    );
+
+    const repository = data.repository;
+
+    if (!repository) {
+        throw createError({
+            statusCode: 404,
+            statusMessage: "Repository not found.",
+        });
+    }
+
+    return repository.discussions.nodes
+        .filter((discussion) => isNewGamesCategory(discussion.category, config))
+        .map((discussion) => ({
+            ...toDiscussionSummary(discussion),
+            comments: (discussion.comments.nodes || []).map(
+                toDiscussionComment,
+            ),
+        }));
+};
+
 export const getDiscussionByNumber = async (
     number: number,
     token?: string,
@@ -641,7 +764,7 @@ export const getDiscussionByNumber = async (
                             description
                         }
                     }
-                    comments(first: 50) {
+                    comments(last: 50) {
                         totalCount
                         nodes {
                             id
@@ -722,7 +845,9 @@ export const addDiscussionComment = async (
         });
     }
 
-    await requestGitHubGraphql(
+    const data = await requestGitHubGraphql<{
+        addDiscussionComment: { comment: { id: string } };
+    }>(
         accessToken,
         `mutation($input: AddDiscussionCommentInput!) {
             addDiscussionComment(input: $input) {
@@ -736,6 +861,38 @@ export const addDiscussionComment = async (
                 discussionId,
                 body,
                 replyToId: replyToId || undefined,
+            },
+        },
+    );
+
+    return data.addDiscussionComment.comment;
+};
+
+export const updateDiscussionComment = async (
+    commentId: string,
+    body: string,
+    accessToken: string,
+) => {
+    if (!accessToken) {
+        throw createError({
+            statusCode: 401,
+            statusMessage: "GitHub token is required to update comments.",
+        });
+    }
+
+    await requestGitHubGraphql(
+        accessToken,
+        `mutation($input: UpdateDiscussionCommentInput!) {
+            updateDiscussionComment(input: $input) {
+                comment {
+                    id
+                }
+            }
+        }`,
+        {
+            input: {
+                commentId,
+                body,
             },
         },
     );

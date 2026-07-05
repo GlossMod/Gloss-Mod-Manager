@@ -44,6 +44,8 @@ export default defineNuxtConfig({
             process.env.NUXT_GITHUB_NEW_GAMES_CATEGORY_ID ||
             process.env.NUXT_GISCUS_NEW_GAMES_CATEGORY_ID ||
             "",
+        payApiBaseUrl:
+            process.env.NUXT_PAY_API_BASE_URL || "https://pay.gloscai.com",
         public: {
             siteUrl:
                 process.env.NUXT_PUBLIC_SITE_URL ||
