@@ -151,8 +151,9 @@ async function handleLml(
     }
 
     for (const item of xmlFiles) {
-        await installXml(await join(modStorage, item), isInstall);
-        const folderName = await basename(await dirname(item));
+        const xmlPath = await join(modStorage, item);
+        await installXml(xmlPath, isInstall);
+        const folderName = await basename(await dirname(xmlPath));
         await Manager.installByFileSibling(
             mod,
             await join(installPath, folderName),

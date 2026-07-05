@@ -233,12 +233,23 @@ export const useManager = defineStore("Manager", () => {
     }
 
     function findSupportedGame(game: IPersistedManagerGame) {
+        const normalizedGameName = game.gameName?.trim().toLowerCase();
+        const sameGameName = (item: ISupportedGames) => {
+            return (
+                item.gameName.trim().toLowerCase() === normalizedGameName
+            );
+        };
+
         return (
             supportedGames.value.find((item) => {
-                return Number(item.GlossGameId) === Number(game.GlossGameId);
+                return (
+                    Number(item.GlossGameId) === Number(game.GlossGameId) &&
+                    sameGameName(item)
+                );
             }) ??
+            supportedGames.value.find(sameGameName) ??
             supportedGames.value.find((item) => {
-                return item.gameName === game.gameName;
+                return Number(item.GlossGameId) === Number(game.GlossGameId);
             })
         );
     }

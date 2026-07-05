@@ -153,7 +153,7 @@ async function handlePak(mod: IModInfo, isInstall: boolean) {
  */
 export const supportedGames = async () =>
     ({
-        GlossGameId: 304,
+        GlossGameId: 176,
         steamAppID: 447040,
         nexusMods: {
             game_domain_name: "watchdogs2",

@@ -951,7 +951,7 @@ async function toggleModInstall(mod: IModInfo, install: boolean) {
     const handler = install ? type.install : type.uninstall;
     const result =
         typeof handler === "function"
-            ? await handler(mod)
+            ? await handler.call(type, mod)
             : await executeTypeInstall(type, handler, mod, install);
 
     if (!isOperationSuccessful(result)) {

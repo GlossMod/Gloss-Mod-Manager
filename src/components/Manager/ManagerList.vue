@@ -289,7 +289,7 @@ async function updateModInstalled(item: IModInfo, nextInstalled: unknown) {
 
     try {
         const type = manager.managerGame?.modType.find(
-            (type) => type.id === item.modType,
+            (type) => String(type.id) === String(item.modType ?? ""),
         );
         if (nextInstalled) {
             if (typeof type?.install == "function") {
