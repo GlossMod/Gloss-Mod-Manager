@@ -124,7 +124,7 @@ const readDiscussionField = (body: string, labels: string[]) => {
     const normalizedLabels = labels.map((label) => label.toLowerCase());
 
     for (const line of body.split(/\r?\n/)) {
-        const [rawKey, ...rest] = line.split(/[：:]/);
+        const [rawKey = "", ...rest] = line.split(/[：:]/);
         const key = rawKey.trim().toLowerCase();
 
         if (normalizedLabels.includes(key)) {
@@ -187,6 +187,7 @@ const parseRecordPayload = (
     }
 
     const record = payload as Partial<CrowdfundingRecord>;
+    const discussionNumber = record.discussionNumber;
     const channel =
         record.channel === "wechat" || record.channel === "alipay"
             ? record.channel
@@ -199,7 +200,8 @@ const parseRecordPayload = (
 
     if (
         record.version !== 1 ||
-        !Number.isInteger(record.discussionNumber) ||
+        typeof discussionNumber !== "number" ||
+        !Number.isInteger(discussionNumber) ||
         !readString(record.discussionId) ||
         !readString(record.gameName) ||
         !readString(record.outTradeNo) ||
@@ -217,7 +219,7 @@ const parseRecordPayload = (
 
     return {
         version: 1,
-        discussionNumber: record.discussionNumber,
+        discussionNumber,
         discussionId: readString(record.discussionId),
         gameName: readString(record.gameName),
         steamAppId:
@@ -250,8 +252,14 @@ const parseCrowdfundingRecords = (
 
     for (const comment of flattenComments(discussion.comments)) {
         for (const match of comment.body.matchAll(pattern)) {
+            const payload = match[1];
+
+            if (!payload) {
+                continue;
+            }
+
             try {
-                const record = parseRecordPayload(JSON.parse(match[1]));
+                const record = parseRecordPayload(JSON.parse(payload));
 
                 if (record) {
                     records.push({

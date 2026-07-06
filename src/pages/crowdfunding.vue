@@ -235,7 +235,7 @@ const openPaymentDialog = (game: CrowdfundingGame) => {
     isPaymentDialogOpen.value = true;
 };
 
-const setPaymentChannel = (value: string | string[] | undefined) => {
+const setPaymentChannel = (value: unknown) => {
     if (value === "alipay" || value === "wechat") {
         paymentChannel.value = value;
     }

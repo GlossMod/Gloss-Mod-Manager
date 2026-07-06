@@ -1,7 +1,38 @@
 import tailwindcss from "@tailwindcss/vite";
+import type { RollupLog, WarningHandlerWithDefault } from "rollup";
 import { defineNuxtConfig } from "nuxt/config";
 
 const defaultSiteUrl = "https://gmm.aoe.top";
+const shouldIgnoreBuildWarning = (warning: RollupLog) => {
+    if (
+        warning.message.includes("Sourcemap is likely to be incorrect") &&
+        (warning.plugin === "nuxt:module-preload-polyfill" ||
+            warning.plugin === "@tailwindcss/vite:generate:build")
+    ) {
+        return true;
+    }
+
+    return (
+        warning.code === "INVALID_ANNOTATION" &&
+        typeof warning.id === "string" &&
+        warning.id.includes("node_modules/@vueuse/core/")
+    );
+};
+
+const handleBuildWarning: WarningHandlerWithDefault = (warning, warn) => {
+    if (shouldIgnoreBuildWarning(warning)) {
+        return;
+    }
+
+    warn(warning);
+};
+type MutableViteWarningConfig = {
+    build?: {
+        rollupOptions?: {
+            onwarn?: WarningHandlerWithDefault;
+        };
+    };
+};
 
 export default defineNuxtConfig({
     compatibilityDate: "2026-05-08",
@@ -33,6 +64,30 @@ export default defineNuxtConfig({
             extensions: ["vue"],
         },
     ],
+    sourcemap: false,
+    hooks: {
+        "vite:extendConfig"(config) {
+            const mutableConfig = config as MutableViteWarningConfig;
+
+            mutableConfig.build ||= {};
+            mutableConfig.build.rollupOptions ||= {};
+
+            const currentOnwarn = mutableConfig.build.rollupOptions.onwarn;
+
+            mutableConfig.build.rollupOptions.onwarn = (warning, warn) => {
+                if (shouldIgnoreBuildWarning(warning)) {
+                    return;
+                }
+
+                if (currentOnwarn) {
+                    currentOnwarn(warning, warn);
+                    return;
+                }
+
+                warn(warning);
+            };
+        },
+    },
     runtimeConfig: {
         githubToken:
             process.env.NUXT_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
@@ -62,6 +117,11 @@ export default defineNuxtConfig({
         },
     },
     vite: {
+        build: {
+            rollupOptions: {
+                onwarn: handleBuildWarning,
+            },
+        },
         plugins: [tailwindcss()],
     },
 });

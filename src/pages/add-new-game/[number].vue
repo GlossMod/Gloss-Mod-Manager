@@ -262,7 +262,9 @@ const toggleReaction = async (
     content: ReactionContent,
     viewerHasReacted: boolean,
 ) => {
-    if (!selectedDiscussion.value) {
+    const discussion = selectedDiscussion.value;
+
+    if (!discussion) {
         return;
     }
 
@@ -278,7 +280,7 @@ const toggleReaction = async (
 
     try {
         await discussionsStore.toggleReaction(
-            selectedDiscussion.value.number,
+            discussion.number,
             subjectId,
             content,
             viewerHasReacted,
@@ -289,6 +291,20 @@ const toggleReaction = async (
     } finally {
         pendingReactionTargetId.value = null;
     }
+};
+
+const toggleSelectedDiscussionReaction = (content: ReactionContent) => {
+    const discussion = selectedDiscussion.value;
+
+    if (!discussion) {
+        return;
+    }
+
+    void toggleReaction(
+        discussion.id,
+        content,
+        getReactionState(discussion.reactions, content).viewerHasReacted,
+    );
 };
 
 const logout = async () => {
@@ -496,14 +512,7 @@ watch(discussionNumber, async (nextNumber, previousNumber) => {
                                 selectedDiscussion.id
                             "
                             @click="
-                                toggleReaction(
-                                    selectedDiscussion.id,
-                                    reaction.content,
-                                    getReactionState(
-                                        selectedDiscussion.reactions,
-                                        reaction.content,
-                                    ).viewerHasReacted,
-                                )
+                                toggleSelectedDiscussionReaction(reaction.content)
                             "
                         >
                             <span class="mr-1.5">{{ reaction.emoji }}</span>
