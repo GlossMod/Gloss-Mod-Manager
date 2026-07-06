@@ -101,6 +101,10 @@ export default defineNuxtConfig({
             "",
         payApiBaseUrl:
             process.env.NUXT_PAY_API_BASE_URL || "https://pay.gloscai.com",
+        discussionBotApiBaseUrl:
+            process.env.NUXT_DISCUSSION_BOT_API_BASE_URL ||
+            "https://bot.gloscai.com",
+        discussionBotApiToken: process.env.NUXT_DISCUSSION_BOT_API_TOKEN || "",
         public: {
             siteUrl:
                 process.env.NUXT_PUBLIC_SITE_URL ||

@@ -3,7 +3,6 @@ import {
     CROWDFUNDING_DATA_MARKER,
     CROWDFUNDING_LABEL_NAME,
     formatCnyAmount,
-    getPaymentChannelName,
     type CrowdfundingGame,
     type CrowdfundingPaymentChannel,
     type CrowdfundingPaymentResponse,
@@ -13,9 +12,10 @@ import {
     type CrowdfundingRecordWithComment,
 } from "../../src/lib/game-crowdfunding";
 import {
+    GITHUB_REPO_NAME,
+    GITHUB_REPO_OWNER,
     addDiscussionComment,
     getDiscussionByNumber,
-    isGitHubTokenAccessError,
     listNewGameDiscussionDetails,
     updateDiscussionComment,
     type DiscussionComment,
@@ -35,6 +35,7 @@ interface CrowdfundingPaymentInput {
     discussionNumber: number;
     amount: number;
     channel: CrowdfundingPaymentChannel;
+    alipayChannel: "pc" | "wap";
     payUser: string;
 }
 
@@ -42,6 +43,8 @@ interface CrowdfundingPaymentStatusInput {
     discussionNumber: number;
     outTradeNo: string;
     channel: CrowdfundingPaymentChannel;
+    amount: number | null;
+    payUser: string;
 }
 
 interface PayCreateResponse {
@@ -60,24 +63,38 @@ interface PayStatusResponse {
     tradeState?: string;
     tradeNo?: string;
     transactionId?: string;
-    totalAmount?: number;
-    totalAmountFen?: number;
+    totalAmount?: number | string;
+    total_amount?: number | string;
+    totalAmountFen?: number | string;
+    total_amount_fen?: number | string;
+    totalFee?: number | string;
+    total_fee?: number | string;
+    amount?: number | string;
+    amountFen?: number | string;
+    amount_fen?: number | string;
+    paidAmount?: number | string;
+    paid_amount?: number | string;
     paidAt?: string;
 }
 
-const STATUS_TEXT: Record<CrowdfundingRecordStatus, string> = {
-    pending: "等待支付",
-    paid: "已确认",
-    closed: "已关闭",
-};
+interface DiscussionBotReplyResponse {
+    comment?: {
+        id: string;
+        url?: string;
+    };
+}
+
+interface SavedDiscussionReply {
+    id: string;
+    url?: string;
+}
+
 const CROWDFUNDING_GAMES_CACHE_MS = 5 * 60 * 1000;
 
-let crowdfundingGamesCache:
-    | {
-          expiresAt: number;
-          games: CrowdfundingGame[];
-      }
-    | null = null;
+let crowdfundingGamesCache: {
+    expiresAt: number;
+    games: CrowdfundingGame[];
+} | null = null;
 let crowdfundingGamesRequest: Promise<CrowdfundingGame[]> | null = null;
 
 const readString = (value: unknown) =>
@@ -97,9 +114,11 @@ const getCrowdfundingConfig = () => {
     const runtimeConfig = useRuntimeConfig();
 
     return {
+        discussionBotApiBaseUrl:
+            runtimeConfig.discussionBotApiBaseUrl || "https://bot.gloscai.com",
+        discussionBotApiToken: runtimeConfig.discussionBotApiToken,
         githubToken: runtimeConfig.githubToken,
-        payApiBaseUrl:
-            runtimeConfig.payApiBaseUrl || "https://pay.gloscai.com",
+        payApiBaseUrl: runtimeConfig.payApiBaseUrl || "https://pay.gloscai.com",
     };
 };
 
@@ -110,7 +129,7 @@ const requireGitHubBotToken = () => {
         throw createError({
             statusCode: 501,
             statusMessage:
-                "GitHub bot token is required for crowdfunding data updates.",
+                "GitHub token is required to read crowdfunding discussions.",
         });
     }
 
@@ -119,6 +138,169 @@ const requireGitHubBotToken = () => {
 
 const getCrowdfundingGitHubToken = (accessToken?: string) =>
     accessToken || requireGitHubBotToken();
+
+const getDiscussionBotRequestConfig = () => {
+    const config = getCrowdfundingConfig();
+    const headers: Record<string, string> = {};
+
+    if (config.discussionBotApiToken) {
+        headers.Authorization = `Bearer ${config.discussionBotApiToken}`;
+        headers["x-glosc-token"] = config.discussionBotApiToken;
+    }
+
+    return {
+        baseUrl: config.discussionBotApiBaseUrl.replace(/\/$/, ""),
+        headers,
+    };
+};
+
+const createDiscussionBotReply = async ({
+    body,
+    discussionNumber,
+}: {
+    body: string;
+    discussionNumber: number;
+}): Promise<SavedDiscussionReply> => {
+    const bot = getDiscussionBotRequestConfig();
+    const response = await $fetch<DiscussionBotReplyResponse>(
+        `${bot.baseUrl}/api/discussions/replies`,
+        {
+            method: "POST",
+            headers: bot.headers,
+            body: {
+                body,
+                discussionNumber,
+                owner: GITHUB_REPO_OWNER,
+                repo: GITHUB_REPO_NAME,
+            },
+        },
+    );
+
+    if (!response.comment?.id) {
+        throw createError({
+            statusCode: 502,
+            statusMessage: "Glosc bot did not return a Discussion comment id.",
+        });
+    }
+
+    return response.comment;
+};
+
+const updateDiscussionBotReply = async (
+    commentId: string,
+    body: string,
+): Promise<SavedDiscussionReply> => {
+    const bot = getDiscussionBotRequestConfig();
+    const response = await $fetch<DiscussionBotReplyResponse>(
+        `${bot.baseUrl}/api/discussions/replies/${encodeURIComponent(
+            commentId,
+        )}`,
+        {
+            method: "PATCH",
+            headers: bot.headers,
+            body: {
+                body,
+                owner: GITHUB_REPO_OWNER,
+                repo: GITHUB_REPO_NAME,
+            },
+        },
+    );
+
+    if (!response.comment?.id) {
+        throw createError({
+            statusCode: 502,
+            statusMessage:
+                "Glosc bot did not return an updated Discussion comment id.",
+        });
+    }
+
+    return response.comment;
+};
+
+const getErrorMessage = (error: unknown) => {
+    const payload = error as {
+        data?: { error?: string; message?: string };
+        message?: string;
+        statusMessage?: string;
+    };
+
+    return (
+        payload.data?.error ||
+        payload.data?.message ||
+        payload.statusMessage ||
+        payload.message ||
+        "Unknown error"
+    );
+};
+
+const throwCrowdfundingRecordSaveError = (
+    action: "create" | "update",
+    botError: unknown,
+    fallbackError: unknown,
+): never => {
+    throw createError({
+        statusCode: 502,
+        statusMessage: [
+            `Crowdfunding record ${action} failed.`,
+            `Bot: ${getErrorMessage(botError)}.`,
+            `GitHub fallback: ${getErrorMessage(fallbackError)}.`,
+        ].join(" "),
+    });
+};
+
+const createCrowdfundingRecordReply = async (
+    discussion: DiscussionDetail,
+    body: string,
+    githubToken: string,
+): Promise<SavedDiscussionReply> => {
+    try {
+        return await createDiscussionBotReply({
+            body,
+            discussionNumber: discussion.number,
+        });
+    } catch (botError) {
+        try {
+            return await addDiscussionComment(discussion.id, body, githubToken);
+        } catch (fallbackError) {
+            return throwCrowdfundingRecordSaveError(
+                "create",
+                botError,
+                fallbackError,
+            );
+        }
+    }
+};
+
+const updateCrowdfundingRecordReply = async (
+    discussion: DiscussionDetail,
+    commentId: string,
+    body: string,
+    githubToken: string,
+): Promise<SavedDiscussionReply> => {
+    try {
+        return await updateDiscussionBotReply(commentId, body);
+    } catch (botError) {
+        try {
+            await updateDiscussionComment(commentId, body, githubToken);
+
+            return { id: commentId };
+        } catch {
+            try {
+                return await addDiscussionComment(
+                    discussion.id,
+                    body,
+                    githubToken,
+                );
+            } catch (replyError) {
+                return throwCrowdfundingRecordSaveError(
+                    "update",
+                    botError,
+                    replyError,
+                );
+            }
+        }
+    }
+};
 
 const readDiscussionField = (body: string, labels: string[]) => {
     const normalizedLabels = labels.map((label) => label.toLowerCase());
@@ -155,9 +337,7 @@ const parseDiscussionGame = (
         "Mod 地址",
         "MOD 地址",
     ]);
-    const additionalInfo = readDiscussionField(discussion.body, [
-        "补充信息",
-    ]);
+    const additionalInfo = readDiscussionField(discussion.body, ["补充信息"]);
 
     return {
         gameName,
@@ -171,17 +351,13 @@ const parseDiscussionGame = (
 const hasCrowdfundingLabel = (discussion: DiscussionDetail) =>
     discussion.labels.some((label) => label.name === CROWDFUNDING_LABEL_NAME);
 
-const flattenComments = (
-    comments: DiscussionComment[],
-): DiscussionComment[] =>
+const flattenComments = (comments: DiscussionComment[]): DiscussionComment[] =>
     comments.flatMap((comment) => [
         comment,
         ...flattenComments(comment.replies || []),
     ]);
 
-const parseRecordPayload = (
-    payload: unknown,
-): CrowdfundingRecord | null => {
+const parseRecordPayload = (payload: unknown): CrowdfundingRecord | null => {
     if (!payload || typeof payload !== "object") {
         return null;
     }
@@ -241,34 +417,75 @@ const parseRecordPayload = (
     };
 };
 
-const parseCrowdfundingRecords = (
-    discussion: DiscussionDetail,
-): CrowdfundingRecordWithComment[] => {
-    const records: CrowdfundingRecordWithComment[] = [];
+const parseSummaryRecords = (payload: unknown): CrowdfundingRecord[] | null => {
+    if (!payload || typeof payload !== "object") {
+        return null;
+    }
+
+    const summary = payload as {
+        records?: unknown;
+        version?: unknown;
+    };
+
+    if (summary.version !== 1 || !Array.isArray(summary.records)) {
+        return null;
+    }
+
+    return summary.records
+        .map((record) => parseRecordPayload(record))
+        .filter((record): record is CrowdfundingRecord => Boolean(record));
+};
+
+const readCrowdfundingMarkerPayloads = (body: string) => {
+    const payloads: unknown[] = [];
     const pattern = new RegExp(
         `<!--\\s*${CROWDFUNDING_DATA_MARKER}\\s*([\\s\\S]*?)-->`,
         "g",
     );
 
-    for (const comment of flattenComments(discussion.comments)) {
-        for (const match of comment.body.matchAll(pattern)) {
-            const payload = match[1];
+    for (const match of body.matchAll(pattern)) {
+        const payload = match[1];
 
-            if (!payload) {
+        if (!payload) {
+            continue;
+        }
+
+        try {
+            payloads.push(JSON.parse(payload));
+        } catch {
+            // Ignore unrelated or malformed comments.
+        }
+    }
+
+    return payloads;
+};
+
+const parseCrowdfundingRecords = (
+    discussion: DiscussionDetail,
+): CrowdfundingRecordWithComment[] => {
+    const records: CrowdfundingRecordWithComment[] = [];
+
+    for (const comment of flattenComments(discussion.comments)) {
+        for (const payload of readCrowdfundingMarkerPayloads(comment.body)) {
+            const summaryRecords = parseSummaryRecords(payload);
+
+            if (summaryRecords) {
+                records.push(
+                    ...summaryRecords.map((record) => ({
+                        ...record,
+                        commentId: comment.id,
+                    })),
+                );
                 continue;
             }
 
-            try {
-                const record = parseRecordPayload(JSON.parse(payload));
+            const record = parseRecordPayload(payload);
 
-                if (record) {
-                    records.push({
-                        ...record,
-                        commentId: comment.id,
-                    });
-                }
-            } catch {
-                // Ignore unrelated or malformed comments.
+            if (record) {
+                records.push({
+                    ...record,
+                    commentId: comment.id,
+                });
             }
         }
     }
@@ -276,7 +493,14 @@ const parseCrowdfundingRecords = (
     const recordsByTradeNo = new Map<string, CrowdfundingRecordWithComment>();
 
     for (const record of records) {
-        recordsByTradeNo.set(record.outTradeNo, record);
+        const current = recordsByTradeNo.get(record.outTradeNo);
+
+        if (
+            !current ||
+            (current.status !== "paid" && record.status === "paid")
+        ) {
+            recordsByTradeNo.set(record.outTradeNo, record);
+        }
     }
 
     return [...recordsByTradeNo.values()].sort(
@@ -286,19 +510,55 @@ const parseCrowdfundingRecords = (
     );
 };
 
-const createCrowdfundingRecordComment = (record: CrowdfundingRecord) =>
-    [
+const findCrowdfundingSummaryComment = (
+    discussion: DiscussionDetail,
+): DiscussionComment | null => {
+    for (const comment of flattenComments(discussion.comments)) {
+        if (
+            readCrowdfundingMarkerPayloads(comment.body).some((payload) =>
+                Boolean(parseSummaryRecords(payload)),
+            )
+        ) {
+            return comment;
+        }
+    }
+
+    return null;
+};
+
+const uniquePayUsers = (records: CrowdfundingRecord[]) => [
+    ...new Set(
+        records.map((record) => readString(record.payUser)).filter(Boolean),
+    ),
+];
+
+const createCrowdfundingProgressComment = (
+    game: CrowdfundingGame,
+    records: CrowdfundingRecord[],
+) => {
+    const paidRecords = records.filter((record) => record.status === "paid");
+    const raisedAmount = toPositiveAmount(
+        paidRecords.reduce((total, record) => total + record.amount, 0),
+    );
+    const participantText = uniquePayUsers(paidRecords).join("、") || "暂无";
+
+    return [
         `<!-- ${CROWDFUNDING_DATA_MARKER}`,
-        JSON.stringify(record),
+        JSON.stringify({
+            version: 1,
+            type: "summary",
+            discussionNumber: game.discussion.number,
+            discussionId: game.discussion.id,
+            gameName: game.gameName,
+            steamAppId: game.steamAppId,
+            records: paidRecords,
+        }),
         "-->",
-        [
-            "GMM 游戏众筹记录",
-            `状态：${STATUS_TEXT[record.status]}`,
-            `金额：${formatCnyAmount(record.amount)}`,
-            `方式：${getPaymentChannelName(record.channel)}`,
-            `订单：${record.outTradeNo}`,
-        ].join(" / "),
+        `游戏众筹进度：${formatCnyAmount(raisedAmount)}/${formatCnyAmount(game.funding.targetAmount)}`,
+        `参与人员：${participantText}`,
+        `参与众筹: https://gmm.aoe.top/crowdfunding`,
     ].join("\n");
+};
 
 const toFundingSummary = (
     records: CrowdfundingRecordWithComment[],
@@ -317,7 +577,10 @@ const toFundingSummary = (
     const remainingAmount =
         targetAmount === null
             ? null
-            : Math.max(Math.round((targetAmount - raisedAmount) * 100) / 100, 0);
+            : Math.max(
+                  Math.round((targetAmount - raisedAmount) * 100) / 100,
+                  0,
+              );
     const progress =
         targetAmount === null
             ? 0
@@ -333,6 +596,88 @@ const toFundingSummary = (
         progress,
         backerCount: paidRecords.length,
         records,
+    };
+};
+
+const withCrowdfundingRecord = (
+    game: CrowdfundingGame,
+    record: CrowdfundingRecordWithComment,
+): CrowdfundingGame => ({
+    ...game,
+    funding: toFundingSummary(
+        [
+            record,
+            ...game.funding.records.filter(
+                (item) => item.outTradeNo !== record.outTradeNo,
+            ),
+        ],
+        game.funding.targetAmount,
+    ),
+});
+
+const createSyntheticCrowdfundingRecord = (
+    input: CrowdfundingPaymentInput | CrowdfundingPaymentStatusInput,
+    discussion: DiscussionDetail,
+    game: CrowdfundingGame,
+    status: CrowdfundingRecordStatus,
+    providerStatus?: string,
+): CrowdfundingRecordWithComment => ({
+    version: 1,
+    discussionNumber: discussion.number,
+    discussionId: discussion.id,
+    gameName: game.gameName,
+    steamAppId: game.steamAppId,
+    outTradeNo:
+        "outTradeNo" in input ? input.outTradeNo : `pending-${randomUUID()}`,
+    amount: input.amount || 0,
+    channel: input.channel,
+    payUser: readString(input.payUser) || "匿名",
+    status,
+    createdAt: new Date().toISOString(),
+    providerStatus,
+    commentId: "",
+});
+
+const upsertPaidCrowdfundingProgressReply = async (
+    discussion: DiscussionDetail,
+    game: CrowdfundingGame,
+    record: CrowdfundingRecordWithComment,
+    githubToken: string,
+): Promise<CrowdfundingRecordWithComment> => {
+    const paidRecord: CrowdfundingRecordWithComment = {
+        ...record,
+        status: "paid",
+    };
+    const paidRecords = [
+        ...game.funding.records.filter(
+            (item) =>
+                item.status === "paid" &&
+                item.outTradeNo !== paidRecord.outTradeNo,
+        ),
+        paidRecord,
+    ].sort(
+        (current, next) =>
+            new Date(current.createdAt).getTime() -
+            new Date(next.createdAt).getTime(),
+    );
+    const commentBody = createCrowdfundingProgressComment(game, paidRecords);
+    const summaryComment = findCrowdfundingSummaryComment(discussion);
+    const savedReply = summaryComment
+        ? await updateCrowdfundingRecordReply(
+              discussion,
+              summaryComment.id,
+              commentBody,
+              githubToken,
+          )
+        : await createCrowdfundingRecordReply(
+              discussion,
+              commentBody,
+              githubToken,
+          );
+
+    return {
+        ...paidRecord,
+        commentId: savedReply.id || summaryComment?.id || record.commentId,
     };
 };
 
@@ -373,7 +718,10 @@ const toCrowdfundingGame = async (
 };
 
 export const listCrowdfundingGames = async (token?: string) => {
-    if (crowdfundingGamesCache && crowdfundingGamesCache.expiresAt > Date.now()) {
+    if (
+        crowdfundingGamesCache &&
+        crowdfundingGamesCache.expiresAt > Date.now()
+    ) {
         return crowdfundingGamesCache.games;
     }
 
@@ -392,7 +740,8 @@ export const listCrowdfundingGames = async (token?: string) => {
             return games.sort((current, next) => {
                 const currentFunded =
                     current.funding.targetAmount !== null &&
-                    current.funding.raisedAmount >= current.funding.targetAmount;
+                    current.funding.raisedAmount >=
+                        current.funding.targetAmount;
                 const nextFunded =
                     next.funding.targetAmount !== null &&
                     next.funding.raisedAmount >= next.funding.targetAmount;
@@ -446,6 +795,7 @@ export const parseCrowdfundingPaymentInput = (
         payload.channel === "wechat" || payload.channel === "alipay"
             ? payload.channel
             : "alipay";
+    const alipayChannel = payload.alipayChannel === "wap" ? "wap" : "pc";
     const payUser = readString(payload.payUser).slice(0, 80);
 
     if (!Number.isInteger(discussionNumber) || discussionNumber <= 0) {
@@ -466,7 +816,8 @@ export const parseCrowdfundingPaymentInput = (
         discussionNumber,
         amount,
         channel,
-        payUser: payUser || `web-${randomUUID().slice(0, 8)}`,
+        alipayChannel,
+        payUser: payUser || "匿名",
     };
 };
 
@@ -483,6 +834,8 @@ export const parseCrowdfundingPaymentStatusInput = (
         payload.channel === "wechat" || payload.channel === "alipay"
             ? payload.channel
             : "alipay";
+    const amount = toPositiveAmount(payload.amount);
+    const payUser = readString(payload.payUser).slice(0, 80);
 
     if (!Number.isInteger(discussionNumber) || discussionNumber <= 0) {
         throw createError({
@@ -502,6 +855,8 @@ export const parseCrowdfundingPaymentStatusInput = (
         discussionNumber,
         outTradeNo,
         channel,
+        amount: amount > 0 ? amount : null,
+        payUser: payUser || "匿名",
     };
 };
 
@@ -525,7 +880,9 @@ const requestPaymentCreate = async (
                     180,
                 ),
             payUser: input.payUser,
-            ...(input.channel === "alipay" ? { channel: "pc" } : {}),
+            ...(input.channel === "alipay"
+                ? { channel: input.alipayChannel }
+                : {}),
         },
     });
 
@@ -544,9 +901,7 @@ const requestPaymentCreate = async (
     };
 };
 
-const requestPaymentStatus = async (
-    input: CrowdfundingPaymentStatusInput,
-) => {
+const requestPaymentStatus = async (input: CrowdfundingPaymentStatusInput) => {
     const baseUrl = getCrowdfundingConfig().payApiBaseUrl.replace(/\/$/, "");
     const path =
         input.channel === "wechat"
@@ -560,7 +915,76 @@ const requestPaymentStatus = async (
     });
 };
 
-const normalizeProviderStatus = (response: PayStatusResponse) => {
+const readPaymentAmount = (value: unknown) => {
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : null;
+    }
+
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.trim().replace(/[^\d.-]/g, "");
+    const amount = Number(normalized);
+
+    return Number.isFinite(amount) ? amount : null;
+};
+
+const amountMatches = (current: number, expectedAmount: number | null) =>
+    expectedAmount !== null && Math.abs(current - expectedAmount) <= 0.01;
+
+const normalizeProviderAmount = (
+    response: PayStatusResponse,
+    expectedAmount: number | null,
+) => {
+    const candidates: number[] = [];
+    const addYuanCandidate = (value: unknown) => {
+        const amount = readPaymentAmount(value);
+
+        if (amount === null) {
+            return;
+        }
+
+        candidates.push(toPositiveAmount(amount));
+        candidates.push(toPositiveAmount(amount / 100));
+    };
+    const addFenCandidate = (value: unknown) => {
+        const amount = readPaymentAmount(value);
+
+        if (amount === null) {
+            return;
+        }
+
+        candidates.push(toPositiveAmount(amount / 100));
+    };
+
+    addYuanCandidate(response.totalAmount);
+    addYuanCandidate(response.total_amount);
+    addYuanCandidate(response.amount);
+    addYuanCandidate(response.paidAmount);
+    addYuanCandidate(response.paid_amount);
+    addFenCandidate(response.totalAmountFen);
+    addFenCandidate(response.total_amount_fen);
+    addFenCandidate(response.totalFee);
+    addFenCandidate(response.total_fee);
+    addFenCandidate(response.amountFen);
+    addFenCandidate(response.amount_fen);
+
+    if (!candidates.length) {
+        return null;
+    }
+
+    return (
+        candidates.find((amount) => amountMatches(amount, expectedAmount)) ??
+        candidates[0] ??
+        null
+    );
+};
+
+const normalizeProviderStatus = (
+    response: PayStatusResponse,
+    expectedAmount: number | null,
+) => {
     const providerStatus =
         response.tradeStatus || response.tradeState || response.status || "";
     const isPaid =
@@ -572,12 +996,7 @@ const normalizeProviderStatus = (response: PayStatusResponse) => {
         response.status === "closed" ||
         response.tradeStatus === "TRADE_CLOSED" ||
         response.tradeState === "CLOSED";
-    const totalAmount =
-        typeof response.totalAmount === "number"
-            ? response.totalAmount
-            : typeof response.totalAmountFen === "number"
-              ? response.totalAmountFen / 100
-              : null;
+    const totalAmount = normalizeProviderAmount(response, expectedAmount);
 
     return {
         providerStatus,
@@ -608,7 +1027,7 @@ export const createCrowdfundingPayment = async (
 
     const game = await toCrowdfundingGame(discussion);
     const payment = await requestPaymentCreate(input, game);
-    const record: CrowdfundingRecord = {
+    const record: CrowdfundingRecordWithComment = {
         version: 1,
         discussionNumber: discussion.number,
         discussionId: discussion.id,
@@ -620,35 +1039,13 @@ export const createCrowdfundingPayment = async (
         payUser: input.payUser,
         status: "pending",
         createdAt: new Date().toISOString(),
+        commentId: "",
     };
 
-    await addDiscussionComment(
-        discussion.id,
-        createCrowdfundingRecordComment(record),
-        githubToken,
-    );
-    invalidateCrowdfundingGamesCache();
-
-    const updatedDiscussion = await getDiscussionByNumber(
-        input.discussionNumber,
-        githubToken,
-    );
-    const updatedGame = await toCrowdfundingGame(updatedDiscussion);
-    const savedRecord = updatedGame.funding.records.find(
-        (item) => item.outTradeNo === payment.outTradeNo,
-    );
-
-    if (!savedRecord) {
-        throw createError({
-            statusCode: 502,
-            statusMessage: "GitHub crowdfunding record was not saved.",
-        });
-    }
-
     return {
-        game: updatedGame,
+        game,
         payment,
-        record: savedRecord,
+        record,
     };
 };
 
@@ -662,30 +1059,29 @@ export const refreshCrowdfundingPaymentStatus = async (
         githubToken,
     );
     const game = await toCrowdfundingGame(discussion);
-    const record = game.funding.records.find(
+    const existingRecord = game.funding.records.find(
         (item) => item.outTradeNo === input.outTradeNo,
     );
 
-    if (!record) {
-        throw createError({
-            statusCode: 404,
-            statusMessage: "Crowdfunding payment record was not found.",
-        });
-    }
-
-    if (record.channel !== input.channel) {
+    if (existingRecord && existingRecord.channel !== input.channel) {
         throw createError({
             statusCode: 409,
             statusMessage: "Payment channel does not match the GitHub record.",
         });
     }
 
+    const expectedAmount = existingRecord?.amount || input.amount;
     const providerResponse = await requestPaymentStatus(input);
-    const providerStatus = normalizeProviderStatus(providerResponse);
+    const providerStatus = normalizeProviderStatus(
+        providerResponse,
+        expectedAmount,
+    );
 
     if (
+        providerStatus.isPaid &&
         providerStatus.totalAmount !== null &&
-        Math.abs(providerStatus.totalAmount - record.amount) > 0.01
+        expectedAmount !== null &&
+        Math.abs(providerStatus.totalAmount - expectedAmount) > 0.01
     ) {
         throw createError({
             statusCode: 409,
@@ -693,60 +1089,79 @@ export const refreshCrowdfundingPaymentStatus = async (
         });
     }
 
-    let nextRecord = record;
+    if (providerStatus.isPaid && !existingRecord && input.amount === null) {
+        throw createError({
+            statusCode: 400,
+            statusMessage:
+                "Sponsor amount is required before saving a paid crowdfunding record.",
+        });
+    }
 
-    if (providerStatus.isPaid && record.status !== "paid") {
+    let nextRecord: CrowdfundingRecordWithComment =
+        existingRecord ||
+        createSyntheticCrowdfundingRecord(
+            input,
+            discussion,
+            game,
+            "pending",
+            providerStatus.providerStatus,
+        );
+
+    if (providerStatus.isPaid) {
         nextRecord = {
-            ...record,
+            ...nextRecord,
+            amount: expectedAmount || nextRecord.amount,
             status: "paid",
             paidAt: providerStatus.paidAt,
             tradeNo: providerStatus.tradeNo || undefined,
             providerStatus: providerStatus.providerStatus,
         };
-    } else if (providerStatus.isClosed && record.status === "pending") {
+    } else if (providerStatus.isClosed && nextRecord.status === "pending") {
         nextRecord = {
-            ...record,
+            ...nextRecord,
             status: "closed",
             closedAt: new Date().toISOString(),
             providerStatus: providerStatus.providerStatus,
         };
     }
 
-    if (nextRecord !== record) {
-        const commentBody = createCrowdfundingRecordComment(nextRecord);
-
-        try {
-            await updateDiscussionComment(
-                record.commentId,
-                commentBody,
-                githubToken,
-            );
-        } catch (error) {
-            if (!isGitHubTokenAccessError(error)) {
-                throw error;
-            }
-
-            await addDiscussionComment(discussion.id, commentBody, githubToken);
-        }
-
+    if (providerStatus.isPaid) {
+        nextRecord = await upsertPaidCrowdfundingProgressReply(
+            discussion,
+            game,
+            nextRecord,
+            githubToken,
+        );
         invalidateCrowdfundingGamesCache();
+
+        const updatedDiscussion = await getDiscussionByNumber(
+            input.discussionNumber,
+            githubToken,
+        );
+        const updatedGame = await toCrowdfundingGame(updatedDiscussion);
+        const updatedRecord =
+            updatedGame.funding.records.find(
+                (item) => item.outTradeNo === input.outTradeNo,
+            ) || nextRecord;
+
+        return {
+            game: updatedGame.funding.records.some(
+                (item) => item.outTradeNo === input.outTradeNo,
+            )
+                ? updatedGame
+                : withCrowdfundingRecord(updatedGame, updatedRecord),
+            record: updatedRecord,
+            paymentStatus:
+                providerStatus.providerStatus || providerResponse.status || "",
+            isPaid: true,
+        };
     }
 
-    const updatedDiscussion = await getDiscussionByNumber(
-        input.discussionNumber,
-        githubToken,
-    );
-    const updatedGame = await toCrowdfundingGame(updatedDiscussion);
-    const updatedRecord =
-        updatedGame.funding.records.find(
-            (item) => item.outTradeNo === input.outTradeNo,
-        ) || nextRecord;
-
     return {
-        game: updatedGame,
-        record: updatedRecord,
+        game,
+        record: nextRecord,
         paymentStatus:
             providerStatus.providerStatus || providerResponse.status || "",
-        isPaid: updatedRecord.status === "paid",
+        isPaid: false,
     };
 };

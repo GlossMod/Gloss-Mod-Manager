@@ -1,30 +1,27 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
     AlertCircle,
+    ArrowDown,
+    ArrowUp,
+    ArrowUpDown,
     BadgeCheck,
     CircleDollarSign,
-    Copy,
     ExternalLink,
     Gamepad2,
     HeartHandshake,
-    LogIn,
     LoaderCircle,
     QrCode,
     RefreshCcw,
+    Search,
+    ShieldCheck,
+    Smartphone,
     Store,
 } from "@lucide/vue";
+import QrcodeVue from "qrcode.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -49,7 +46,24 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableEmpty,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
     formatCnyAmount,
@@ -65,7 +79,38 @@ import {
     createWebPageJsonLd,
     useSeoMeta,
 } from "@/lib/seo";
-import type { AuthSessionResponse } from "@/lib/new-game-discussions";
+import { cn } from "@/lib/utils";
+
+interface PendingCrowdfundingPaymentSession {
+    discussionNumber: number;
+    amount: number;
+    payUser: string;
+    channel: CrowdfundingPaymentChannel;
+    outTradeNo: string;
+    payUrl: string;
+    codeUrl: string;
+    createdAt: string;
+}
+
+interface PollPaymentStatusOptions {
+    stopWhenDialogClosed?: boolean;
+}
+
+type CrowdfundingStatusFilter =
+    | "all"
+    | "funding"
+    | "completed"
+    | "unknown-price";
+type CrowdfundingSortKey =
+    | "createdAt"
+    | "gameName"
+    | "targetAmount"
+    | "raisedAmount"
+    | "progress"
+    | "remainingAmount"
+    | "backerCount";
+type SortDirection = "asc" | "desc";
+type SortableValue = number | string | null;
 
 const pageTitle = "游戏众筹";
 const pageDescription =
@@ -91,16 +136,6 @@ const {
     error: loadError,
     refresh,
 } = await useFetch<CrowdfundingGamesResponse>("/api/crowdfunding/games");
-const { data: authSession } = await useFetch<AuthSessionResponse>(
-    "/api/auth/session",
-    {
-        default: () => ({
-            isConfigured: false,
-            isLoggedIn: false,
-            viewer: null,
-        }),
-    },
-);
 
 const selectedGame = ref<CrowdfundingGame | null>(null);
 const isPaymentDialogOpen = ref(false);
@@ -109,22 +144,189 @@ const payUser = ref("");
 const paymentChannel = ref<CrowdfundingPaymentChannel>("alipay");
 const activePayment = ref<CrowdfundingPaymentResponse | null>(null);
 const paymentError = ref("");
-const copyMessage = ref("");
+const paymentSuccess = ref("");
+const paymentSuccessNotice = ref("");
 const isCreatingPayment = ref(false);
 const isCheckingPayment = ref(false);
+const isMobileDevice = ref(false);
+const gameSearchQuery = ref("");
+const gameStatusFilter = ref<CrowdfundingStatusFilter>("all");
+const gameSortKey = ref<CrowdfundingSortKey>("createdAt");
+const gameSortDirection = ref<SortDirection>("desc");
 
+const statusFilterOptions: Array<{
+    value: CrowdfundingStatusFilter;
+    label: string;
+}> = [
+    { value: "all", label: "全部状态" },
+    { value: "funding", label: "众筹中" },
+    { value: "completed", label: "已完成" },
+    { value: "unknown-price", label: "价格待确认" },
+];
+const sortOptions: Array<{ value: CrowdfundingSortKey; label: string }> = [
+    { value: "createdAt", label: "创建时间" },
+    { value: "gameName", label: "游戏名称" },
+    { value: "targetAmount", label: "目标金额" },
+    { value: "raisedAmount", label: "已筹金额" },
+    { value: "progress", label: "进度" },
+    { value: "remainingAmount", label: "剩余金额" },
+    { value: "backerCount", label: "参与人数" },
+];
 const games = computed(() => crowdfundingData.value?.games || []);
-const loginUrl = computed(
+const isGameCompleted = (game: CrowdfundingGame) =>
+    game.funding.targetAmount !== null &&
+    game.funding.raisedAmount >= game.funding.targetAmount;
+const getGameStatus = (game: CrowdfundingGame): CrowdfundingStatusFilter => {
+    if (game.funding.targetAmount === null) {
+        return "unknown-price";
+    }
+
+    return isGameCompleted(game) ? "completed" : "funding";
+};
+const getGameStatusLabel = (game: CrowdfundingGame) => {
+    const status = getGameStatus(game);
+
+    return (
+        statusFilterOptions.find((option) => option.value === status)?.label ||
+        "众筹中"
+    );
+};
+const getGameStatusVariant = (
+    game: CrowdfundingGame,
+): "default" | "secondary" | "outline" => {
+    if (getGameStatus(game) === "completed") {
+        return "default";
+    }
+
+    return getGameStatus(game) === "unknown-price" ? "outline" : "secondary";
+};
+const getGameSearchText = (game: CrowdfundingGame) =>
+    [
+        game.gameName,
+        game.discussion.title,
+        game.discussion.body,
+        `#${game.discussion.number}`,
+        String(game.discussion.number),
+        game.steam?.name,
+        game.steam?.shortDescription,
+        game.additionalInfo,
+        game.sourceUrl,
+        game.modUrl,
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+const getGameSortValue = (
+    game: CrowdfundingGame,
+    key: CrowdfundingSortKey,
+): SortableValue => {
+    switch (key) {
+        case "createdAt":
+            return new Date(game.discussion.createdAt).getTime();
+        case "gameName":
+            return game.gameName.toLowerCase();
+        case "targetAmount":
+            return game.funding.targetAmount;
+        case "raisedAmount":
+            return game.funding.raisedAmount;
+        case "progress":
+            return game.funding.progress;
+        case "remainingAmount":
+            return game.funding.remainingAmount;
+        case "backerCount":
+            return game.funding.backerCount;
+        default:
+            return null;
+    }
+};
+const compareSortableValues = (
+    left: SortableValue,
+    right: SortableValue,
+    direction: SortDirection,
+) => {
+    if (left === null && right === null) {
+        return 0;
+    }
+
+    if (left === null) {
+        return 1;
+    }
+
+    if (right === null) {
+        return -1;
+    }
+
+    const result =
+        typeof left === "string" && typeof right === "string"
+            ? left.localeCompare(right, "zh-CN")
+            : Number(left) - Number(right);
+
+    return direction === "asc" ? result : -result;
+};
+const filteredGames = computed(() => {
+    const searchText = gameSearchQuery.value.trim().toLowerCase();
+
+    return games.value
+        .filter((game) => {
+            const status = getGameStatus(game);
+            const matchesStatus =
+                gameStatusFilter.value === "all" ||
+                status === gameStatusFilter.value;
+            const matchesSearch =
+                !searchText || getGameSearchText(game).includes(searchText);
+
+            return matchesStatus && matchesSearch;
+        })
+        .slice()
+        .sort((leftGame, rightGame) => {
+            const sortResult = compareSortableValues(
+                getGameSortValue(leftGame, gameSortKey.value),
+                getGameSortValue(rightGame, gameSortKey.value),
+                gameSortDirection.value,
+            );
+
+            if (sortResult !== 0) {
+                return sortResult;
+            }
+
+            return rightGame.discussion.number - leftGame.discussion.number;
+        });
+});
+const hasActiveGameFilters = computed(
     () =>
-        `/api/auth/github/login?redirect=${encodeURIComponent(
-            "/crowdfunding",
-        )}`,
+        gameSearchQuery.value.trim().length > 0 ||
+        gameStatusFilter.value !== "all",
 );
-const needsGitHubLoginForPayment = computed(
-    () =>
-        Boolean(authSession.value?.isConfigured) &&
-        !authSession.value?.isLoggedIn,
+const setGameSort = (key: CrowdfundingSortKey) => {
+    if (gameSortKey.value === key) {
+        gameSortDirection.value =
+            gameSortDirection.value === "asc" ? "desc" : "asc";
+        return;
+    }
+
+    gameSortKey.value = key;
+    gameSortDirection.value = key === "gameName" ? "asc" : "desc";
+};
+const toggleSortDirection = () => {
+    gameSortDirection.value =
+        gameSortDirection.value === "asc" ? "desc" : "asc";
+};
+const getSortIcon = (key: CrowdfundingSortKey) => {
+    if (gameSortKey.value !== key) {
+        return ArrowUpDown;
+    }
+
+    return gameSortDirection.value === "asc" ? ArrowUp : ArrowDown;
+};
+const sortDirectionLabel = computed(() =>
+    gameSortDirection.value === "asc" ? "升序" : "降序",
 );
+const resetGameFilters = () => {
+    gameSearchQuery.value = "";
+    gameStatusFilter.value = "all";
+};
+const pendingPaymentStorageKey = "gmm:crowdfunding:pending-payment";
+const pendingPaymentMaxAge = 1000 * 60 * 30;
 const totalTargetAmount = computed(() =>
     games.value.reduce(
         (total, game) => total + (game.funding.targetAmount || 0),
@@ -154,34 +356,68 @@ const amountError = computed(() => {
 
     return "";
 });
-const selectedPaymentStatus = computed(() => {
+const createPaymentButtonText = computed(() => {
+    if (isCreatingPayment.value || isCheckingPayment.value) {
+        return "处理中";
+    }
+
+    return `使用${getPaymentChannelName(paymentChannel.value)}赞助`;
+});
+const activePaymentValue = computed(() => {
     if (!activePayment.value) {
         return "";
     }
 
-    const status = activePayment.value.record.status;
-
-    if (status === "paid") {
-        return "支付已确认，GitHub 记录已更新。";
-    }
-
-    if (status === "closed") {
-        return "订单已关闭。";
-    }
-
-    return "订单已创建，等待支付确认。";
+    return activePayment.value.payment.channel === "wechat"
+        ? activePayment.value.payment.codeUrl ||
+              activePayment.value.payment.payUrl
+        : activePayment.value.payment.payUrl ||
+              activePayment.value.payment.codeUrl;
 });
-const createPaymentButtonText = computed(() => {
-    if (isCreatingPayment.value) {
-        return "正在创建订单";
+const activePaymentChannelName = computed(() =>
+    activePayment.value
+        ? getPaymentChannelName(activePayment.value.payment.channel)
+        : "",
+);
+const activePaymentChannelClass = computed(() =>
+    cn(
+        "relative flex items-center justify-center rounded-lg border-2 p-3 text-base font-semibold",
+        activePayment.value?.payment.channel === "wechat"
+            ? "border-primary bg-primary/5 text-primary"
+            : "border-primary bg-primary/5 text-primary",
+    ),
+);
+const shouldShowAlipayFrame = computed(
+    () =>
+        activePayment.value?.payment.channel === "alipay" &&
+        Boolean(activePaymentValue.value),
+);
+const shouldShowWechatQrCode = computed(
+    () =>
+        activePayment.value?.payment.channel === "wechat" &&
+        Boolean(activePaymentValue.value),
+);
+const paymentHelperText = computed(() => {
+    if (isCheckingPayment.value) {
+        return "等待扫码支付...";
     }
 
-    if (needsGitHubLoginForPayment.value) {
-        return "请先登录 GitHub";
+    if (activePayment.value?.payment.channel === "wechat") {
+        return "请使用微信扫码完成支付";
     }
 
-    return `创建${getPaymentChannelName(paymentChannel.value)}订单`;
+    return "打开支付宝扫一扫";
 });
+const paymentQrCaption = computed(() =>
+    activePayment.value?.payment.channel === "alipay"
+        ? "支付二维码会在弹窗内展示，扫码后请留在本页等待确认。"
+        : "请使用微信扫码完成支付，完成后本页会自动确认。",
+);
+const paymentSecurityText = computed(() =>
+    activePayment.value?.payment.channel === "wechat"
+        ? "微信支付官方通道承载"
+        : "支付宝官方安全支付中心承载",
+);
 
 const formatDate = (value: string) =>
     new Intl.DateTimeFormat("zh-CN", {
@@ -231,7 +467,7 @@ const openPaymentDialog = (game: CrowdfundingGame) => {
     sponsorAmount.value = formatAmountInput(getDefaultSponsorAmount(game));
     activePayment.value = null;
     paymentError.value = "";
-    copyMessage.value = "";
+    paymentSuccess.value = "";
     isPaymentDialogOpen.value = true;
 };
 
@@ -241,9 +477,208 @@ const setPaymentChannel = (value: unknown) => {
     }
 };
 
-const redirectToGitHubLogin = () => {
-    if (typeof window !== "undefined") {
-        window.location.assign(loginUrl.value);
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let paymentSuccessNoticeTimer: number | null = null;
+
+const syncDeviceState = () => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    isMobileDevice.value =
+        /android|iphone|ipad|ipod|iemobile|opera mini|mobile/i.test(
+            userAgent,
+        ) || window.innerWidth < 768;
+};
+
+const persistPendingPayment = (session: PendingCrowdfundingPaymentSession) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    window.localStorage.setItem(
+        pendingPaymentStorageKey,
+        JSON.stringify(session),
+    );
+};
+
+const getPendingPayment = (): PendingCrowdfundingPaymentSession | null => {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    const rawValue = window.localStorage.getItem(pendingPaymentStorageKey);
+
+    if (!rawValue) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(rawValue) as PendingCrowdfundingPaymentSession;
+    } catch {
+        window.localStorage.removeItem(pendingPaymentStorageKey);
+        return null;
+    }
+};
+
+const clearPendingPayment = () => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    window.localStorage.removeItem(pendingPaymentStorageKey);
+};
+
+const getActivePaymentSession =
+    (): PendingCrowdfundingPaymentSession | null => {
+        if (!activePayment.value) {
+            return null;
+        }
+
+        return {
+            discussionNumber: activePayment.value.game.discussion.number,
+            amount: activePayment.value.record.amount,
+            payUser: activePayment.value.record.payUser,
+            channel: activePayment.value.payment.channel,
+            outTradeNo: activePayment.value.payment.outTradeNo,
+            payUrl: activePayment.value.payment.payUrl,
+            codeUrl: activePayment.value.payment.codeUrl,
+            createdAt: activePayment.value.record.createdAt,
+        };
+    };
+
+const applyPaymentStatusResponse = (
+    session: PendingCrowdfundingPaymentSession,
+    response: CrowdfundingPaymentStatusResponse,
+) => {
+    activePayment.value = {
+        game: response.game,
+        payment: {
+            channel: session.channel,
+            outTradeNo: session.outTradeNo,
+            payUrl: session.payUrl,
+            codeUrl: session.codeUrl,
+        },
+        record: response.record,
+    };
+    replaceGame(response.game);
+};
+
+const requestPaymentStatus = async (
+    session: PendingCrowdfundingPaymentSession,
+) =>
+    $fetch<CrowdfundingPaymentStatusResponse>("/api/crowdfunding/pay/status", {
+        method: "POST",
+        body: {
+            discussionNumber: session.discussionNumber,
+            outTradeNo: session.outTradeNo,
+            channel: session.channel,
+            amount: session.amount,
+            payUser: session.payUser,
+        },
+    });
+
+const showPaymentSuccessNotice = () => {
+    paymentSuccessNotice.value = "支付成功，感谢您的参与";
+
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    if (paymentSuccessNoticeTimer) {
+        window.clearTimeout(paymentSuccessNoticeTimer);
+    }
+
+    paymentSuccessNoticeTimer = window.setTimeout(() => {
+        paymentSuccessNotice.value = "";
+        paymentSuccessNoticeTimer = null;
+    }, 6000);
+};
+
+const completeSuccessfulPayment = async () => {
+    clearPendingPayment();
+    paymentSuccess.value = "支付成功，感谢您的参与";
+    isPaymentDialogOpen.value = false;
+    showPaymentSuccessNotice();
+    await refresh();
+};
+
+const pollPaymentStatus = async (
+    session: PendingCrowdfundingPaymentSession,
+    options: PollPaymentStatusOptions = {},
+) => {
+    isCheckingPayment.value = true;
+    const shouldStopWhenDialogClosed =
+        options.stopWhenDialogClosed ?? !isMobileDevice.value;
+
+    try {
+        for (let index = 0; index < 40; index += 1) {
+            if (
+                shouldStopWhenDialogClosed &&
+                !isPaymentDialogOpen.value &&
+                index > 0
+            ) {
+                break;
+            }
+
+            const response = await requestPaymentStatus(session);
+            applyPaymentStatusResponse(session, response);
+
+            if (response.isPaid) {
+                await completeSuccessfulPayment();
+                return;
+            }
+
+            if (response.record.status === "closed") {
+                clearPendingPayment();
+                paymentError.value = "订单已关闭，请重新发起支付。";
+                return;
+            }
+
+            await wait(3000);
+        }
+
+        if (isPaymentDialogOpen.value || !shouldStopWhenDialogClosed) {
+            paymentError.value = "暂未检测到支付成功，可稍后刷新状态。";
+        }
+    } finally {
+        isCheckingPayment.value = false;
+    }
+};
+
+const syncPendingPaymentStatus = async () => {
+    const pendingPayment = getPendingPayment();
+
+    if (!pendingPayment) {
+        return;
+    }
+
+    const createdAt = new Date(pendingPayment.createdAt).getTime();
+
+    if (
+        !Number.isFinite(createdAt) ||
+        Date.now() - createdAt > pendingPaymentMaxAge
+    ) {
+        clearPendingPayment();
+        return;
+    }
+
+    try {
+        const response = await requestPaymentStatus(pendingPayment);
+
+        if (response.isPaid) {
+            applyPaymentStatusResponse(pendingPayment, response);
+            clearPendingPayment();
+            await refresh();
+            return;
+        }
+
+        if (response.record.status === "closed") {
+            clearPendingPayment();
+        }
+    } catch {
+        // Keep page entry quiet. The next manual payment/status check can retry.
     }
 };
 
@@ -252,14 +687,8 @@ const createPayment = async () => {
         return;
     }
 
-    if (needsGitHubLoginForPayment.value) {
-        paymentError.value = "创建支付订单前需要先登录 GitHub。";
-        redirectToGitHubLogin();
-        return;
-    }
-
     paymentError.value = "";
-    copyMessage.value = "";
+    paymentSuccess.value = "";
     isCreatingPayment.value = true;
 
     try {
@@ -271,13 +700,33 @@ const createPayment = async () => {
                     discussionNumber: selectedGame.value.discussion.number,
                     amount: selectedAmount.value,
                     channel: paymentChannel.value,
+                    alipayChannel: "pc",
                     payUser: payUser.value,
                 },
             },
         );
+        const session: PendingCrowdfundingPaymentSession = {
+            discussionNumber: response.game.discussion.number,
+            amount: response.record.amount,
+            payUser: response.record.payUser,
+            channel: response.payment.channel,
+            outTradeNo: response.payment.outTradeNo,
+            payUrl: response.payment.payUrl,
+            codeUrl: response.payment.codeUrl,
+            createdAt: response.record.createdAt,
+        };
+        const paymentUrl = response.payment.payUrl || response.payment.codeUrl;
+
+        if (!paymentUrl) {
+            throw new Error("支付链接生成失败，请稍后重试。");
+        }
 
         activePayment.value = response;
-        replaceGame(response.game);
+        persistPendingPayment(session);
+
+        await pollPaymentStatus(session, {
+            stopWhenDialogClosed: true,
+        });
     } catch (error) {
         paymentError.value =
             error instanceof Error ? error.message : "创建支付单失败。";
@@ -287,7 +736,9 @@ const createPayment = async () => {
 };
 
 const refreshPaymentStatus = async () => {
-    if (!activePayment.value) {
+    const session = getActivePaymentSession();
+
+    if (!session) {
         return;
     }
 
@@ -295,28 +746,12 @@ const refreshPaymentStatus = async () => {
     isCheckingPayment.value = true;
 
     try {
-        const response = await $fetch<CrowdfundingPaymentStatusResponse>(
-            "/api/crowdfunding/pay/status",
-            {
-                method: "POST",
-                body: {
-                    discussionNumber:
-                        activePayment.value.game.discussion.number,
-                    outTradeNo: activePayment.value.payment.outTradeNo,
-                    channel: activePayment.value.payment.channel,
-                },
-            },
-        );
+        const response = await requestPaymentStatus(session);
 
-        activePayment.value = {
-            ...activePayment.value,
-            game: response.game,
-            record: response.record,
-        };
-        replaceGame(response.game);
+        applyPaymentStatusResponse(session, response);
 
         if (response.isPaid) {
-            await refresh();
+            await completeSuccessfulPayment();
         }
     } catch (error) {
         paymentError.value =
@@ -326,27 +761,31 @@ const refreshPaymentStatus = async () => {
     }
 };
 
-const copyWechatCode = async () => {
-    if (!activePayment.value?.payment.codeUrl) {
+watch(isPaymentDialogOpen, (isOpen) => {
+    if (!isOpen) {
+        clearPendingPayment();
+        activePayment.value = null;
+        paymentError.value = "";
+        paymentSuccess.value = "";
+    }
+});
+
+onMounted(async () => {
+    syncDeviceState();
+    window.addEventListener("resize", syncDeviceState);
+    await syncPendingPaymentStatus();
+});
+
+onBeforeUnmount(() => {
+    if (typeof window === "undefined") {
         return;
     }
 
-    try {
-        await navigator.clipboard.writeText(
-            activePayment.value.payment.codeUrl,
-        );
-        copyMessage.value = "已复制微信支付链接。";
-    } catch {
-        copyMessage.value = "复制失败，请手动选择支付链接。";
+    if (paymentSuccessNoticeTimer) {
+        window.clearTimeout(paymentSuccessNoticeTimer);
     }
-};
 
-watch(isPaymentDialogOpen, (isOpen) => {
-    if (!isOpen) {
-        activePayment.value = null;
-        paymentError.value = "";
-        copyMessage.value = "";
-    }
+    window.removeEventListener("resize", syncDeviceState);
 });
 </script>
 
@@ -409,148 +848,428 @@ watch(isPaymentDialogOpen, (isOpen) => {
             </AlertDescription>
         </Alert>
 
-        <div
-            v-if="isLoading"
-            class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
-        >
-            <Card v-for="index in 6" :key="index" class="overflow-hidden">
-                <Skeleton class="aspect-460/215 rounded-none" />
-                <CardHeader>
-                    <Skeleton class="h-6 w-3/4" />
-                    <Skeleton class="h-4 w-full" />
-                </CardHeader>
-                <CardContent class="flex flex-col gap-4">
-                    <Skeleton class="h-2 w-full" />
-                    <div class="grid grid-cols-3 gap-3">
-                        <Skeleton class="h-10" />
-                        <Skeleton class="h-10" />
-                        <Skeleton class="h-10" />
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    <Skeleton class="h-10 w-full" />
-                </CardFooter>
-            </Card>
+        <Alert v-if="paymentSuccessNotice">
+            <BadgeCheck />
+            <AlertTitle>{{ paymentSuccessNotice }}</AlertTitle>
+        </Alert>
+
+        <div v-if="isLoading" class="rounded-lg border bg-card">
+            <Table class="min-w-[1080px]">
+                <TableHeader>
+                    <TableRow>
+                        <TableHead class="w-[360px]">游戏</TableHead>
+                        <TableHead>价格/目标</TableHead>
+                        <TableHead>已筹</TableHead>
+                        <TableHead class="w-[180px]">进度</TableHead>
+                        <TableHead>剩余</TableHead>
+                        <TableHead>参与</TableHead>
+                        <TableHead>状态</TableHead>
+                        <TableHead class="text-right">操作</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow v-for="index in 6" :key="index">
+                        <TableCell class="whitespace-normal">
+                            <div class="flex items-center gap-3">
+                                <Skeleton class="size-14 rounded-md" />
+                                <div class="flex min-w-0 flex-1 flex-col gap-2">
+                                    <Skeleton class="h-5 w-48" />
+                                    <Skeleton class="h-4 w-64" />
+                                </div>
+                            </div>
+                        </TableCell>
+                        <TableCell><Skeleton class="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton class="h-5 w-20" /></TableCell>
+                        <TableCell>
+                            <div class="flex w-36 flex-col gap-2">
+                                <Skeleton class="h-4 w-16" />
+                                <Skeleton class="h-2 w-full" />
+                            </div>
+                        </TableCell>
+                        <TableCell><Skeleton class="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton class="h-5 w-10" /></TableCell>
+                        <TableCell><Skeleton class="h-5 w-16" /></TableCell>
+                        <TableCell class="text-right">
+                            <Skeleton class="ml-auto h-8 w-28" />
+                        </TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
         </div>
 
-        <div
-            v-else-if="games.length"
-            class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
-        >
-            <Card
-                v-for="game in games"
-                :key="game.discussion.number"
-                class="overflow-hidden"
+        <section v-else-if="games.length" class="flex flex-col gap-4">
+            <div
+                class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
             >
-                <div class="aspect-460/215 bg-muted">
-                    <img
-                        v-if="game.steam?.headerImage"
-                        :src="game.steam.headerImage"
-                        :alt="`${game.gameName} Steam 封面`"
-                        loading="lazy"
-                        decoding="async"
-                        referrerpolicy="no-referrer"
-                        class="h-full w-full object-cover"
-                    />
-                    <div
-                        v-else
-                        class="flex h-full items-center justify-center text-muted-foreground"
-                    >
-                        <Gamepad2 class="size-10" />
+                <div class="flex flex-1 flex-col gap-3 sm:flex-row">
+                    <div class="relative flex-1">
+                        <Search
+                            class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                        />
+                        <Input
+                            v-model="gameSearchQuery"
+                            type="search"
+                            placeholder="搜索游戏、Discussion 或简介"
+                            aria-label="搜索众筹游戏"
+                            class="pl-9"
+                        />
                     </div>
+                    <Select v-model="gameStatusFilter">
+                        <SelectTrigger
+                            class="w-full sm:w-[180px]"
+                            aria-label="按众筹状态筛选"
+                        >
+                            <SelectValue placeholder="全部状态" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectGroup>
+                                <SelectItem
+                                    v-for="option in statusFilterOptions"
+                                    :key="option.value"
+                                    :value="option.value"
+                                >
+                                    {{ option.label }}
+                                </SelectItem>
+                            </SelectGroup>
+                        </SelectContent>
+                    </Select>
                 </div>
 
-                <CardHeader>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">
-                            #{{ game.discussion.number }}
-                        </Badge>
-                        <Badge variant="outline">
-                            {{
-                                game.steam?.price?.finalFormatted ||
-                                "价格待确认"
-                            }}
-                        </Badge>
-                    </div>
-                    <CardTitle class="line-clamp-2">
-                        {{ game.gameName }}
-                    </CardTitle>
-                    <CardDescription class="line-clamp-2">
-                        {{
-                            game.steam?.shortDescription ||
-                            game.additionalInfo ||
-                            "这个请求还在等待游戏本体。"
-                        }}
-                    </CardDescription>
-                </CardHeader>
-
-                <CardContent class="flex flex-col gap-5">
-                    <div class="flex flex-col gap-2">
-                        <div
-                            class="flex items-center justify-between gap-3 text-sm"
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <Select v-model="gameSortKey">
+                        <SelectTrigger
+                            class="w-full sm:w-[180px]"
+                            aria-label="选择排序字段"
                         >
-                            <span class="text-muted-foreground">众筹进度</span>
-                            <span class="font-medium">
-                                {{ game.funding.progress }}%
-                            </span>
-                        </div>
-                        <Progress :model-value="game.funding.progress" />
-                    </div>
-
-                    <div class="grid grid-cols-3 gap-3 text-sm">
-                        <div class="flex flex-col gap-1 rounded-md border p-3">
-                            <span class="text-muted-foreground">目标</span>
-                            <span class="font-medium">
-                                {{ formatCnyAmount(game.funding.targetAmount) }}
-                            </span>
-                        </div>
-                        <div class="flex flex-col gap-1 rounded-md border p-3">
-                            <span class="text-muted-foreground">已筹</span>
-                            <span class="font-medium">
-                                {{ formatCnyAmount(game.funding.raisedAmount) }}
-                            </span>
-                        </div>
-                        <div class="flex flex-col gap-1 rounded-md border p-3">
-                            <span class="text-muted-foreground">赞助</span>
-                            <span class="font-medium">
-                                {{ game.funding.backerCount }}
-                            </span>
-                        </div>
-                    </div>
-                </CardContent>
-
-                <CardFooter class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <SelectValue placeholder="排序字段" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectGroup>
+                                <SelectItem
+                                    v-for="option in sortOptions"
+                                    :key="option.value"
+                                    :value="option.value"
+                                >
+                                    {{ option.label }}
+                                </SelectItem>
+                            </SelectGroup>
+                        </SelectContent>
+                    </Select>
                     <Button
-                        class="w-full"
-                        :disabled="
-                            game.funding.targetAmount !== null &&
-                            game.funding.raisedAmount >=
-                                game.funding.targetAmount
-                        "
-                        @click="openPaymentDialog(game)"
+                        type="button"
+                        variant="outline"
+                        class="justify-center sm:w-24"
+                        @click="toggleSortDirection"
                     >
-                        <HeartHandshake data-icon="inline-start" />
-                        {{
-                            game.funding.targetAmount !== null &&
-                            game.funding.raisedAmount >=
-                                game.funding.targetAmount
-                                ? "已完成"
-                                : "赞助这款"
-                        }}
+                        <ArrowUp
+                            v-if="gameSortDirection === 'asc'"
+                            data-icon="inline-start"
+                        />
+                        <ArrowDown v-else data-icon="inline-start" />
+                        {{ sortDirectionLabel }}
                     </Button>
-                    <Button variant="outline" class="w-full" as-child>
-                        <a
-                            :href="game.discussion.url"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            讨论
-                            <ExternalLink data-icon="inline-end" />
-                        </a>
-                    </Button>
-                </CardFooter>
-            </Card>
-        </div>
+                </div>
+            </div>
+
+            <div
+                class="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"
+            >
+                <div>显示 {{ filteredGames.length }} / {{ games.length }}</div>
+                <Button
+                    v-if="hasActiveGameFilters"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    @click="resetGameFilters"
+                >
+                    重置筛选
+                </Button>
+            </div>
+
+            <div class="rounded-lg border bg-card">
+                <Table class="min-w-[1080px]">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead class="w-[360px]">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="-ml-3"
+                                    @click="setGameSort('gameName')"
+                                >
+                                    游戏
+                                    <component
+                                        :is="getSortIcon('gameName')"
+                                        data-icon="inline-end"
+                                    />
+                                </Button>
+                            </TableHead>
+                            <TableHead>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="-ml-3"
+                                    @click="setGameSort('targetAmount')"
+                                >
+                                    价格/目标
+                                    <component
+                                        :is="getSortIcon('targetAmount')"
+                                        data-icon="inline-end"
+                                    />
+                                </Button>
+                            </TableHead>
+                            <TableHead>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="-ml-3"
+                                    @click="setGameSort('raisedAmount')"
+                                >
+                                    已筹
+                                    <component
+                                        :is="getSortIcon('raisedAmount')"
+                                        data-icon="inline-end"
+                                    />
+                                </Button>
+                            </TableHead>
+                            <TableHead class="w-[180px]">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="-ml-3"
+                                    @click="setGameSort('progress')"
+                                >
+                                    进度
+                                    <component
+                                        :is="getSortIcon('progress')"
+                                        data-icon="inline-end"
+                                    />
+                                </Button>
+                            </TableHead>
+                            <TableHead>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="-ml-3"
+                                    @click="setGameSort('remainingAmount')"
+                                >
+                                    剩余
+                                    <component
+                                        :is="getSortIcon('remainingAmount')"
+                                        data-icon="inline-end"
+                                    />
+                                </Button>
+                            </TableHead>
+                            <TableHead>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="-ml-3"
+                                    @click="setGameSort('backerCount')"
+                                >
+                                    参与
+                                    <component
+                                        :is="getSortIcon('backerCount')"
+                                        data-icon="inline-end"
+                                    />
+                                </Button>
+                            </TableHead>
+                            <TableHead>状态</TableHead>
+                            <TableHead class="text-right">操作</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableEmpty v-if="!filteredGames.length" :colspan="8">
+                            <div class="flex flex-col items-center gap-3">
+                                <div class="font-medium">没有匹配的游戏</div>
+                                <Button
+                                    v-if="hasActiveGameFilters"
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    @click="resetGameFilters"
+                                >
+                                    重置筛选
+                                </Button>
+                            </div>
+                        </TableEmpty>
+                        <template v-else>
+                            <TableRow
+                                v-for="game in filteredGames"
+                                :key="game.discussion.number"
+                            >
+                                <TableCell
+                                    class="min-w-[360px] whitespace-normal"
+                                >
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground"
+                                        >
+                                            <img
+                                                v-if="game.steam?.headerImage"
+                                                :src="game.steam.headerImage"
+                                                :alt="`${game.gameName} Steam 封面`"
+                                                loading="lazy"
+                                                decoding="async"
+                                                referrerpolicy="no-referrer"
+                                                class="size-full object-cover"
+                                            />
+                                            <Gamepad2 v-else />
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="truncate font-medium">
+                                                {{ game.gameName }}
+                                            </div>
+                                            <div
+                                                class="line-clamp-1 text-xs text-muted-foreground"
+                                            >
+                                                {{
+                                                    game.steam
+                                                        ?.shortDescription ||
+                                                    game.additionalInfo ||
+                                                    "这个请求还在等待游戏本体。"
+                                                }}
+                                            </div>
+                                            <div
+                                                class="mt-1 flex flex-wrap items-center gap-2"
+                                            >
+                                                <Badge variant="secondary">
+                                                    #{{ game.discussion.number }}
+                                                </Badge>
+                                                <span
+                                                    class="text-xs text-muted-foreground"
+                                                >
+                                                    {{
+                                                        formatDate(
+                                                            game.discussion
+                                                                .createdAt,
+                                                        )
+                                                    }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex flex-col gap-1">
+                                        <span class="font-medium">
+                                            {{
+                                                game.steam?.price
+                                                    ?.finalFormatted ||
+                                                "价格待确认"
+                                            }}
+                                        </span>
+                                        <span
+                                            class="text-xs text-muted-foreground"
+                                        >
+                                            目标
+                                            {{
+                                                formatCnyAmount(
+                                                    game.funding.targetAmount,
+                                                )
+                                            }}
+                                        </span>
+                                    </div>
+                                </TableCell>
+                                <TableCell class="font-medium">
+                                    {{
+                                        formatCnyAmount(
+                                            game.funding.raisedAmount,
+                                        )
+                                    }}
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex w-40 flex-col gap-2">
+                                        <div
+                                            class="flex items-center justify-between gap-3 text-xs"
+                                        >
+                                            <span
+                                                class="text-muted-foreground"
+                                            >
+                                                众筹进度
+                                            </span>
+                                            <span class="font-medium">
+                                                {{
+                                                    game.funding
+                                                        .targetAmount === null
+                                                        ? "待确认"
+                                                        : `${game.funding.progress}%`
+                                                }}
+                                            </span>
+                                        </div>
+                                        <Progress
+                                            :model-value="
+                                                game.funding.progress
+                                            "
+                                        />
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    {{
+                                        formatCnyAmount(
+                                            game.funding.remainingAmount,
+                                        )
+                                    }}
+                                </TableCell>
+                                <TableCell>
+                                    {{ game.funding.backerCount }}
+                                </TableCell>
+                                <TableCell>
+                                    <Badge
+                                        :variant="getGameStatusVariant(game)"
+                                    >
+                                        {{ getGameStatusLabel(game) }}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <div
+                                        class="flex items-center justify-end gap-2"
+                                    >
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            :disabled="isGameCompleted(game)"
+                                            @click="openPaymentDialog(game)"
+                                        >
+                                            <HeartHandshake
+                                                data-icon="inline-start"
+                                            />
+                                            {{
+                                                isGameCompleted(game)
+                                                    ? "已完成"
+                                                    : "赞助"
+                                            }}
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            as-child
+                                        >
+                                            <a
+                                                :href="game.discussion.url"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                讨论
+                                                <ExternalLink
+                                                    data-icon="inline-end"
+                                                />
+                                            </a>
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        </template>
+                    </TableBody>
+                </Table>
+            </div>
+        </section>
 
         <Empty v-else>
             <EmptyHeader>
@@ -570,162 +1289,257 @@ watch(isPaymentDialogOpen, (isOpen) => {
         </Empty>
 
         <Dialog v-model:open="isPaymentDialogOpen">
-            <DialogContent class="sm:max-w-xl">
-                <DialogHeader>
-                    <DialogTitle>
+            <DialogContent class="overflow-hidden sm:max-w-xl">
+                <DialogHeader :class="activePayment ? 'text-center' : ''">
+                    <DialogTitle v-if="activePayment" class="text-2xl">
+                        扫码完成赞助
+                    </DialogTitle>
+                    <DialogTitle v-else>
                         赞助 {{ selectedGame?.gameName || "游戏" }}
                     </DialogTitle>
-                    <DialogDescription>
-                        订单会先写入对应
-                        Discussion，支付确认后同一条记录会更新为已确认。
+                    <DialogDescription v-if="activePayment">
+                        支付成功后会自动更新对应 Discussion 的众筹进度。
+                    </DialogDescription>
+                    <DialogDescription v-else>
+                        支付成功后，Glosc Bot 会更新对应 Discussion 的众筹进度。
                     </DialogDescription>
                 </DialogHeader>
 
                 <div v-if="selectedGame" class="flex flex-col gap-5">
-                    <div class="flex flex-col gap-3 rounded-md border p-4">
-                        <div class="flex items-start justify-between gap-4">
-                            <div class="min-w-0">
-                                <div class="truncate font-medium">
-                                    {{ selectedGame.gameName }}
+                    <template v-if="!activePayment">
+                        <div class="flex flex-col gap-3 rounded-md border p-4">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="min-w-0">
+                                    <div class="truncate font-medium">
+                                        {{ selectedGame.gameName }}
+                                    </div>
+                                    <div class="text-sm text-muted-foreground">
+                                        Discussion #{{
+                                            selectedGame.discussion.number
+                                        }}
+                                        ·
+                                        {{
+                                            formatDate(
+                                                selectedGame.discussion
+                                                    .createdAt,
+                                            )
+                                        }}
+                                    </div>
                                 </div>
-                                <div class="text-sm text-muted-foreground">
-                                    Discussion #{{
-                                        selectedGame.discussion.number
-                                    }}
-                                    ·
+                                <Badge variant="secondary">
                                     {{
-                                        formatDate(
-                                            selectedGame.discussion.createdAt,
-                                        )
+                                        selectedGame.steam?.price
+                                            ?.finalFormatted || "价格待确认"
                                     }}
-                                </div>
+                                </Badge>
                             </div>
-                            <Badge variant="secondary">
+                            <div class="flex flex-wrap gap-2">
+                                <Button
+                                    v-if="selectedGame.steam?.storeUrl"
+                                    variant="outline"
+                                    size="sm"
+                                    as-child
+                                >
+                                    <a
+                                        :href="selectedGame.steam.storeUrl"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <Store data-icon="inline-start" />
+                                        Steam
+                                    </a>
+                                </Button>
+                                <Button variant="outline" size="sm" as-child>
+                                    <a
+                                        :href="selectedGame.discussion.url"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink
+                                            data-icon="inline-start"
+                                        />
+                                        GitHub
+                                    </a>
+                                </Button>
+                            </div>
+                        </div>
+
+                        <form
+                            class="flex flex-col gap-5"
+                            @submit.prevent="createPayment"
+                        >
+                            <FieldGroup>
+                                <Field
+                                    :data-invalid="
+                                        amountError ? true : undefined
+                                    "
+                                >
+                                    <FieldLabel for="sponsor-amount">
+                                        赞助金额
+                                    </FieldLabel>
+                                    <Input
+                                        id="sponsor-amount"
+                                        v-model="sponsorAmount"
+                                        type="number"
+                                        min="1"
+                                        max="9999"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                        :aria-invalid="
+                                            amountError ? true : undefined
+                                        "
+                                    />
+                                    <FieldDescription>
+                                        {{
+                                            amountError ||
+                                            `建议金额：${formatCnyAmount(
+                                                getDefaultSponsorAmount(
+                                                    selectedGame,
+                                                ),
+                                            )}`
+                                        }}
+                                    </FieldDescription>
+                                </Field>
+
+                                <Field>
+                                    <FieldLabel for="pay-user">
+                                        昵称
+                                    </FieldLabel>
+                                    <Input
+                                        id="pay-user"
+                                        v-model="payUser"
+                                        maxlength="80"
+                                        placeholder="可留空"
+                                    />
+                                </Field>
+
+                                <Field>
+                                    <FieldTitle id="payment-channel-label">
+                                        支付方式
+                                    </FieldTitle>
+                                    <ToggleGroup
+                                        :model-value="paymentChannel"
+                                        type="single"
+                                        variant="outline"
+                                        class="w-full"
+                                        aria-labelledby="payment-channel-label"
+                                        @update:model-value="setPaymentChannel"
+                                    >
+                                        <ToggleGroupItem
+                                            value="alipay"
+                                            class="flex-1"
+                                        >
+                                            <CircleDollarSign />
+                                            支付宝
+                                        </ToggleGroupItem>
+                                        <ToggleGroupItem
+                                            value="wechat"
+                                            class="flex-1"
+                                        >
+                                            <QrCode />
+                                            微信支付
+                                        </ToggleGroupItem>
+                                    </ToggleGroup>
+                                </Field>
+                            </FieldGroup>
+
+                            <Alert v-if="paymentError" variant="destructive">
+                                <AlertCircle />
+                                <AlertTitle>支付处理失败</AlertTitle>
+                                <AlertDescription>
+                                    {{ paymentError }}
+                                </AlertDescription>
+                            </Alert>
+
+                            <Button
+                                type="submit"
+                                :disabled="
+                                    isCreatingPayment ||
+                                    isCheckingPayment ||
+                                    Boolean(amountError)
+                                "
+                            >
+                                <LoaderCircle
+                                    v-if="
+                                        isCreatingPayment || isCheckingPayment
+                                    "
+                                    data-icon="inline-start"
+                                    class="animate-spin"
+                                />
+                                <CircleDollarSign
+                                    v-else
+                                    data-icon="inline-start"
+                                />
+                                {{ createPaymentButtonText }}
+                            </Button>
+                        </form>
+                    </template>
+
+                    <div v-else class="flex flex-col gap-5">
+                        <div class="flex flex-col items-center gap-2">
+                            <div class="text-sm text-muted-foreground">
+                                支付金额
+                            </div>
+                            <div class="text-5xl font-bold tracking-tight">
                                 {{
-                                    selectedGame.steam?.price?.finalFormatted ||
-                                    "价格待确认"
+                                    formatCnyAmount(activePayment.record.amount)
+                                }}
+                            </div>
+                        </div>
+
+                        <div :class="activePaymentChannelClass">
+                            {{ activePaymentChannelName }}
+                            <Badge class="absolute -right-3 -top-3">
+                                {{
+                                    activePayment.payment.channel === "alipay"
+                                        ? "推荐"
+                                        : "扫码"
                                 }}
                             </Badge>
                         </div>
-                        <div class="flex flex-wrap gap-2">
-                            <Button
-                                v-if="selectedGame.steam?.storeUrl"
-                                variant="outline"
-                                size="sm"
-                                as-child
+
+                        <div
+                            class="flex flex-col items-center justify-center gap-5 rounded-md border bg-muted/20 p-6"
+                        >
+                            <div
+                                class="flex size-64 items-center justify-center overflow-hidden rounded-md bg-background"
                             >
-                                <a
-                                    :href="selectedGame.steam.storeUrl"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                <iframe
+                                    v-if="shouldShowAlipayFrame"
+                                    :src="activePaymentValue"
+                                    title="支付宝支付"
+                                    class="size-full bg-background"
+                                />
+                                <div
+                                    v-else-if="shouldShowWechatQrCode"
+                                    class="flex size-full items-center justify-center bg-white p-4"
                                 >
-                                    <Store data-icon="inline-start" />
-                                    Steam
-                                </a>
-                            </Button>
-                            <Button variant="outline" size="sm" as-child>
-                                <a
-                                    :href="selectedGame.discussion.url"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <ExternalLink data-icon="inline-start" />
-                                    GitHub
-                                </a>
-                            </Button>
+                                    <QrcodeVue
+                                        :value="activePaymentValue"
+                                        :size="224"
+                                        level="M"
+                                        render-as="svg"
+                                    />
+                                </div>
+                                <LoaderCircle
+                                    v-else
+                                    class="animate-spin text-muted-foreground"
+                                />
+                            </div>
+
+                            <div
+                                class="flex items-center gap-2 text-sm text-muted-foreground"
+                            >
+                                <Smartphone class="size-4" />
+                                <span>{{ paymentHelperText }}</span>
+                            </div>
+
+                            <div
+                                class="text-center text-sm text-muted-foreground"
+                            >
+                                {{ paymentQrCaption }}
+                            </div>
                         </div>
-                    </div>
-
-                    <Alert v-if="needsGitHubLoginForPayment">
-                        <LogIn />
-                        <AlertTitle>需要 GitHub 登录</AlertTitle>
-                        <AlertDescription class="flex flex-col gap-3">
-                            <span>
-                                支付订单需要先写入对应 Discussion 作为记录。
-                            </span>
-                            <Button size="sm" class="w-fit" as-child>
-                                <a :href="loginUrl">
-                                    <LogIn data-icon="inline-start" />
-                                    登录 GitHub
-                                </a>
-                            </Button>
-                        </AlertDescription>
-                    </Alert>
-
-                    <form
-                        class="flex flex-col gap-5"
-                        @submit.prevent="createPayment"
-                    >
-                        <FieldGroup>
-                            <Field
-                                :data-invalid="amountError ? true : undefined"
-                            >
-                                <FieldLabel for="sponsor-amount">
-                                    赞助金额
-                                </FieldLabel>
-                                <Input
-                                    id="sponsor-amount"
-                                    v-model="sponsorAmount"
-                                    type="number"
-                                    min="1"
-                                    max="9999"
-                                    step="0.01"
-                                    inputmode="decimal"
-                                    :aria-invalid="
-                                        amountError ? true : undefined
-                                    "
-                                />
-                                <FieldDescription>
-                                    {{
-                                        amountError ||
-                                        `建议金额：${formatCnyAmount(
-                                            getDefaultSponsorAmount(
-                                                selectedGame,
-                                            ),
-                                        )}`
-                                    }}
-                                </FieldDescription>
-                            </Field>
-
-                            <Field>
-                                <FieldLabel for="pay-user"> 昵称 </FieldLabel>
-                                <Input
-                                    id="pay-user"
-                                    v-model="payUser"
-                                    maxlength="80"
-                                    placeholder="可留空"
-                                />
-                            </Field>
-
-                            <Field>
-                                <FieldTitle id="payment-channel-label">
-                                    支付方式
-                                </FieldTitle>
-                                <ToggleGroup
-                                    :model-value="paymentChannel"
-                                    type="single"
-                                    variant="outline"
-                                    class="w-full"
-                                    aria-labelledby="payment-channel-label"
-                                    @update:model-value="setPaymentChannel"
-                                >
-                                    <ToggleGroupItem
-                                        value="alipay"
-                                        class="flex-1"
-                                    >
-                                        <CircleDollarSign />
-                                        支付宝
-                                    </ToggleGroupItem>
-                                    <ToggleGroupItem
-                                        value="wechat"
-                                        class="flex-1"
-                                    >
-                                        <QrCode />
-                                        微信支付
-                                    </ToggleGroupItem>
-                                </ToggleGroup>
-                            </Field>
-                        </FieldGroup>
 
                         <Alert v-if="paymentError" variant="destructive">
                             <AlertCircle />
@@ -734,78 +1548,26 @@ watch(isPaymentDialogOpen, (isOpen) => {
                                 {{ paymentError }}
                             </AlertDescription>
                         </Alert>
+                        <Alert v-if="paymentSuccess">
+                            <BadgeCheck />
+                            <AlertTitle>支付成功</AlertTitle>
+                            <AlertDescription>
+                                {{ paymentSuccess }}
+                            </AlertDescription>
+                        </Alert>
 
-                        <Button
-                            type="submit"
-                            :disabled="
-                                isCreatingPayment ||
-                                Boolean(amountError) ||
-                                needsGitHubLoginForPayment
-                            "
+                        <div
+                            class="flex flex-col items-center justify-between gap-3 sm:flex-row"
                         >
-                            <LoaderCircle
-                                v-if="isCreatingPayment"
-                                data-icon="inline-start"
-                                class="animate-spin"
-                            />
-                            <CircleDollarSign
-                                v-else-if="!needsGitHubLoginForPayment"
-                                data-icon="inline-start"
-                            />
-                            <LogIn v-else data-icon="inline-start" />
-                            {{ createPaymentButtonText }}
-                        </Button>
-                    </form>
-
-                    <div
-                        v-if="activePayment"
-                        class="flex flex-col gap-4 rounded-md border bg-muted/20 p-4"
-                    >
-                        <div class="flex flex-col gap-1">
-                            <div class="text-sm font-medium">
-                                {{ selectedPaymentStatus }}
-                            </div>
                             <div
-                                class="break-all text-xs text-muted-foreground"
+                                class="flex items-center gap-2 text-sm text-muted-foreground"
                             >
-                                {{ activePayment.payment.outTradeNo }}
+                                <ShieldCheck class="size-4" />
+                                <span>{{ paymentSecurityText }}</span>
                             </div>
-                            <div
-                                v-if="activePayment.payment.codeUrl"
-                                class="break-all text-xs text-muted-foreground"
-                            >
-                                {{ activePayment.payment.codeUrl }}
-                            </div>
-                        </div>
-
-                        <div class="flex flex-col gap-2 sm:flex-row">
-                            <Button
-                                v-if="activePayment.payment.payUrl"
-                                class="w-full"
-                                as-child
-                            >
-                                <a
-                                    :href="activePayment.payment.payUrl"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    前往支付
-                                    <ExternalLink data-icon="inline-end" />
-                                </a>
-                            </Button>
-                            <Button
-                                v-if="activePayment.payment.codeUrl"
-                                type="button"
-                                class="w-full"
-                                @click="copyWechatCode"
-                            >
-                                <Copy data-icon="inline-start" />
-                                复制微信支付链接
-                            </Button>
                             <Button
                                 type="button"
                                 variant="outline"
-                                class="w-full"
                                 :disabled="isCheckingPayment"
                                 @click="refreshPaymentStatus"
                             >
@@ -817,13 +1579,6 @@ watch(isPaymentDialogOpen, (isOpen) => {
                                 <RefreshCcw v-else data-icon="inline-start" />
                                 刷新状态
                             </Button>
-                        </div>
-
-                        <div
-                            v-if="copyMessage"
-                            class="text-sm text-muted-foreground"
-                        >
-                            {{ copyMessage }}
                         </div>
                     </div>
                 </div>

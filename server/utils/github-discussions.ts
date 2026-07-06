@@ -1,6 +1,6 @@
 const GITHUB_GRAPHQL_URL = "https://api.github.com/graphql";
-const GITHUB_REPO_OWNER = "GlossMod";
-const GITHUB_REPO_NAME = "Gloss-Mod-Manager";
+export const GITHUB_REPO_OWNER = "GlossMod";
+export const GITHUB_REPO_NAME = "Gloss-Mod-Manager";
 export const NEW_GAMES_CATEGORY = "new-games";
 
 const REACTION_CONTENTS = [
