@@ -23,7 +23,7 @@
         "@ai-sdk/vue": "^3.0.177",
         "@tailwindcss/vite": "^4.2.2",
         "@tanstack/vue-table": "^8.21.3",
-        "@tauri-apps/api": "^2",
+        "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-autostart": "^2.5.1",
         "@tauri-apps/plugin-cli": "^2.4.1",
         "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
@@ -64,7 +64,7 @@
         "zod": "^4.4.3"
     },
     "devDependencies": {
-        "@tauri-apps/cli": "^2",
+        "@tauri-apps/cli": "^2.11.1",
         "@types/ini": "^4.1.1",
         "@types/markdown-it": "^14.1.2",
         "@types/node": "^25.6.0",
