@@ -50,7 +50,7 @@
         "ini": "^6.0.0",
         "js-md5": "^0.8.3",
         "lucide-vue-next": "^1.0.0",
-        "markdown-it": "^14.1.1",
+        "markdown-it": "^14.2.0",
         "markdown-it-anchor": "^9.2.0",
         "pinia": "^3.0.4",
         "reka-ui": "^2.9.6",
