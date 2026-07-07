@@ -428,6 +428,10 @@ const formatAmountInput = (amount: number) =>
     Math.min(Math.max(amount, 1), 9999).toFixed(2);
 
 const getDefaultSponsorAmount = (game: CrowdfundingGame) => {
+    if (isGameCompleted(game)) {
+        return 10;
+    }
+
     if (
         typeof game.funding.remainingAmount === "number" &&
         game.funding.remainingAmount > 0
@@ -853,48 +857,92 @@ onBeforeUnmount(() => {
             <AlertTitle>{{ paymentSuccessNotice }}</AlertTitle>
         </Alert>
 
-        <div v-if="isLoading" class="rounded-lg border bg-card">
-            <Table class="min-w-[1080px]">
-                <TableHeader>
-                    <TableRow>
-                        <TableHead class="w-[360px]">游戏</TableHead>
-                        <TableHead>价格/目标</TableHead>
-                        <TableHead>已筹</TableHead>
-                        <TableHead class="w-[180px]">进度</TableHead>
-                        <TableHead>剩余</TableHead>
-                        <TableHead>参与</TableHead>
-                        <TableHead>状态</TableHead>
-                        <TableHead class="text-right">操作</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    <TableRow v-for="index in 6" :key="index">
-                        <TableCell class="whitespace-normal">
-                            <div class="flex items-center gap-3">
-                                <Skeleton class="size-14 rounded-md" />
-                                <div class="flex min-w-0 flex-1 flex-col gap-2">
-                                    <Skeleton class="h-5 w-48" />
-                                    <Skeleton class="h-4 w-64" />
+        <div v-if="isLoading" class="flex flex-col gap-3">
+            <div class="flex flex-col gap-3 lg:hidden">
+                <div
+                    v-for="index in 4"
+                    :key="index"
+                    class="flex flex-col gap-3 rounded-lg border bg-card p-3"
+                >
+                    <div class="flex items-center gap-3">
+                        <Skeleton class="size-16 shrink-0 rounded-md" />
+                        <div class="flex min-w-0 flex-1 flex-col gap-2">
+                            <Skeleton class="h-5 w-3/4" />
+                            <Skeleton class="h-4 w-full" />
+                            <Skeleton class="h-4 w-1/2" />
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <Skeleton class="h-4 w-24" />
+                        <Skeleton class="h-2 w-full" />
+                    </div>
+                    <div class="grid grid-cols-3 gap-3">
+                        <Skeleton class="h-10" />
+                        <Skeleton class="h-10" />
+                        <Skeleton class="h-10" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <Skeleton class="h-9" />
+                        <Skeleton class="h-9" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="hidden rounded-lg border bg-card lg:block">
+                <Table class="min-w-[1080px]">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead class="w-[360px]">游戏</TableHead>
+                            <TableHead>价格/目标</TableHead>
+                            <TableHead>已筹</TableHead>
+                            <TableHead class="w-[180px]">进度</TableHead>
+                            <TableHead>剩余</TableHead>
+                            <TableHead>参与</TableHead>
+                            <TableHead>状态</TableHead>
+                            <TableHead class="text-right">操作</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow v-for="index in 6" :key="index">
+                            <TableCell class="whitespace-normal">
+                                <div class="flex items-center gap-3">
+                                    <Skeleton class="size-14 rounded-md" />
+                                    <div
+                                        class="flex min-w-0 flex-1 flex-col gap-2"
+                                    >
+                                        <Skeleton class="h-5 w-48" />
+                                        <Skeleton class="h-4 w-64" />
+                                    </div>
                                 </div>
-                            </div>
-                        </TableCell>
-                        <TableCell><Skeleton class="h-5 w-20" /></TableCell>
-                        <TableCell><Skeleton class="h-5 w-20" /></TableCell>
-                        <TableCell>
-                            <div class="flex w-36 flex-col gap-2">
-                                <Skeleton class="h-4 w-16" />
-                                <Skeleton class="h-2 w-full" />
-                            </div>
-                        </TableCell>
-                        <TableCell><Skeleton class="h-5 w-20" /></TableCell>
-                        <TableCell><Skeleton class="h-5 w-10" /></TableCell>
-                        <TableCell><Skeleton class="h-5 w-16" /></TableCell>
-                        <TableCell class="text-right">
-                            <Skeleton class="ml-auto h-8 w-28" />
-                        </TableCell>
-                    </TableRow>
-                </TableBody>
-            </Table>
+                            </TableCell>
+                            <TableCell>
+                                <Skeleton class="h-5 w-20" />
+                            </TableCell>
+                            <TableCell>
+                                <Skeleton class="h-5 w-20" />
+                            </TableCell>
+                            <TableCell>
+                                <div class="flex w-36 flex-col gap-2">
+                                    <Skeleton class="h-4 w-16" />
+                                    <Skeleton class="h-2 w-full" />
+                                </div>
+                            </TableCell>
+                            <TableCell>
+                                <Skeleton class="h-5 w-20" />
+                            </TableCell>
+                            <TableCell>
+                                <Skeleton class="h-5 w-10" />
+                            </TableCell>
+                            <TableCell>
+                                <Skeleton class="h-5 w-16" />
+                            </TableCell>
+                            <TableCell class="text-right">
+                                <Skeleton class="ml-auto h-8 w-28" />
+                            </TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+            </div>
         </div>
 
         <section v-else-if="games.length" class="flex flex-col gap-4">
@@ -935,7 +983,9 @@ onBeforeUnmount(() => {
                     </Select>
                 </div>
 
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div
+                    class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:flex sm:items-center"
+                >
                     <Select v-model="gameSortKey">
                         <SelectTrigger
                             class="w-full sm:w-[180px]"
@@ -958,7 +1008,7 @@ onBeforeUnmount(() => {
                     <Button
                         type="button"
                         variant="outline"
-                        class="justify-center sm:w-24"
+                        class="justify-center px-3 sm:w-24"
                         @click="toggleSortDirection"
                     >
                         <ArrowUp
@@ -986,7 +1036,177 @@ onBeforeUnmount(() => {
                 </Button>
             </div>
 
-            <div class="rounded-lg border bg-card">
+            <div class="flex flex-col gap-3 lg:hidden">
+                <Empty
+                    v-if="!filteredGames.length"
+                    class="rounded-lg border bg-card"
+                >
+                    <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                            <Search />
+                        </EmptyMedia>
+                        <EmptyTitle>没有匹配的游戏</EmptyTitle>
+                    </EmptyHeader>
+                    <EmptyContent>
+                        <Button
+                            v-if="hasActiveGameFilters"
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="resetGameFilters"
+                        >
+                            重置筛选
+                        </Button>
+                    </EmptyContent>
+                </Empty>
+
+                <template v-else>
+                    <article
+                        v-for="game in filteredGames"
+                        :key="game.discussion.number"
+                        class="flex flex-col gap-3 rounded-lg border bg-card p-3"
+                    >
+                        <div class="flex gap-3">
+                            <div
+                                class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground"
+                            >
+                                <img
+                                    v-if="game.steam?.headerImage"
+                                    :src="game.steam.headerImage"
+                                    :alt="`${game.gameName} Steam 封面`"
+                                    loading="lazy"
+                                    decoding="async"
+                                    referrerpolicy="no-referrer"
+                                    class="size-full object-cover"
+                                />
+                                <Gamepad2 v-else />
+                            </div>
+                            <div class="flex min-w-0 flex-1 flex-col gap-2">
+                                <div
+                                    class="flex items-start justify-between gap-2"
+                                >
+                                    <div class="min-w-0">
+                                        <h2
+                                            class="truncate text-base font-semibold"
+                                        >
+                                            {{ game.gameName }}
+                                        </h2>
+                                        <p
+                                            class="line-clamp-2 text-xs text-muted-foreground"
+                                        >
+                                            {{
+                                                game.steam?.shortDescription ||
+                                                game.additionalInfo ||
+                                                "这个请求还在等待游戏本体。"
+                                            }}
+                                        </p>
+                                    </div>
+                                    <Badge
+                                        :variant="getGameStatusVariant(game)"
+                                        class="shrink-0"
+                                    >
+                                        {{ getGameStatusLabel(game) }}
+                                    </Badge>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <Badge variant="secondary">
+                                        #{{ game.discussion.number }}
+                                    </Badge>
+                                    <Badge variant="outline">
+                                        {{
+                                            game.steam?.price?.finalFormatted ||
+                                            "价格待确认"
+                                        }}
+                                    </Badge>
+                                    <span class="text-xs text-muted-foreground">
+                                        {{
+                                            formatDate(
+                                                game.discussion.createdAt,
+                                            )
+                                        }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-2">
+                            <div
+                                class="flex items-center justify-between gap-3 text-sm"
+                            >
+                                <span class="text-muted-foreground">
+                                    众筹进度
+                                </span>
+                                <span class="font-medium">
+                                    {{
+                                        game.funding.targetAmount === null
+                                            ? "待确认"
+                                            : `${game.funding.progress}%`
+                                    }}
+                                </span>
+                            </div>
+                            <Progress :model-value="game.funding.progress" />
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-3 text-xs">
+                            <div class="flex min-w-0 flex-col gap-1">
+                                <span class="text-muted-foreground">目标</span>
+                                <span class="truncate font-medium">
+                                    {{
+                                        formatCnyAmount(
+                                            game.funding.targetAmount,
+                                        )
+                                    }}
+                                </span>
+                            </div>
+                            <div class="flex min-w-0 flex-col gap-1">
+                                <span class="text-muted-foreground">已筹</span>
+                                <span class="truncate font-medium">
+                                    {{
+                                        formatCnyAmount(
+                                            game.funding.raisedAmount,
+                                        )
+                                    }}
+                                </span>
+                            </div>
+                            <div class="flex min-w-0 flex-col gap-1">
+                                <span class="text-muted-foreground">参与</span>
+                                <span class="truncate font-medium">
+                                    {{ game.funding.backerCount }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                class="w-full"
+                                @click="openPaymentDialog(game)"
+                            >
+                                <HeartHandshake data-icon="inline-start" />
+                                赞助
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                class="w-full"
+                                as-child
+                            >
+                                <a
+                                    :href="game.discussion.url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    讨论
+                                    <ExternalLink data-icon="inline-end" />
+                                </a>
+                            </Button>
+                        </div>
+                    </article>
+                </template>
+            </div>
+
+            <div class="hidden rounded-lg border bg-card lg:block">
                 <Table class="min-w-[1080px]">
                     <TableHeader>
                         <TableRow>
@@ -1140,7 +1360,9 @@ onBeforeUnmount(() => {
                                                 class="mt-1 flex flex-wrap items-center gap-2"
                                             >
                                                 <Badge variant="secondary">
-                                                    #{{ game.discussion.number }}
+                                                    #{{
+                                                        game.discussion.number
+                                                    }}
                                                 </Badge>
                                                 <span
                                                     class="text-xs text-muted-foreground"
@@ -1189,9 +1411,7 @@ onBeforeUnmount(() => {
                                         <div
                                             class="flex items-center justify-between gap-3 text-xs"
                                         >
-                                            <span
-                                                class="text-muted-foreground"
-                                            >
+                                            <span class="text-muted-foreground">
                                                 众筹进度
                                             </span>
                                             <span class="font-medium">
@@ -1204,9 +1424,7 @@ onBeforeUnmount(() => {
                                             </span>
                                         </div>
                                         <Progress
-                                            :model-value="
-                                                game.funding.progress
-                                            "
+                                            :model-value="game.funding.progress"
                                         />
                                     </div>
                                 </TableCell>
@@ -1234,17 +1452,12 @@ onBeforeUnmount(() => {
                                         <Button
                                             type="button"
                                             size="sm"
-                                            :disabled="isGameCompleted(game)"
                                             @click="openPaymentDialog(game)"
                                         >
                                             <HeartHandshake
                                                 data-icon="inline-start"
                                             />
-                                            {{
-                                                isGameCompleted(game)
-                                                    ? "已完成"
-                                                    : "赞助"
-                                            }}
+                                            赞助
                                         </Button>
                                         <Button
                                             variant="outline"
