@@ -136,8 +136,7 @@ const requireGitHubBotToken = () => {
     return token;
 };
 
-const getCrowdfundingGitHubToken = (accessToken?: string) =>
-    accessToken || requireGitHubBotToken();
+const getCrowdfundingGitHubToken = () => requireGitHubBotToken();
 
 const getDiscussionBotRequestConfig = () => {
     const config = getCrowdfundingConfig();
@@ -1010,9 +1009,8 @@ const normalizeProviderStatus = (
 
 export const createCrowdfundingPayment = async (
     input: CrowdfundingPaymentInput,
-    accessToken?: string,
 ): Promise<CrowdfundingPaymentResponse> => {
-    const githubToken = getCrowdfundingGitHubToken(accessToken);
+    const githubToken = getCrowdfundingGitHubToken();
     const discussion = await getDiscussionByNumber(
         input.discussionNumber,
         githubToken,
@@ -1051,9 +1049,8 @@ export const createCrowdfundingPayment = async (
 
 export const refreshCrowdfundingPaymentStatus = async (
     input: CrowdfundingPaymentStatusInput,
-    accessToken?: string,
 ): Promise<CrowdfundingPaymentStatusResponse> => {
-    const githubToken = getCrowdfundingGitHubToken(accessToken);
+    const githubToken = getCrowdfundingGitHubToken();
     const discussion = await getDiscussionByNumber(
         input.discussionNumber,
         githubToken,
