@@ -13,6 +13,67 @@ const markdown = new MarkdownIt({
     breaks: true,
 });
 
+const stripHtmlComments = (content: string) => {
+    const lines = content.split(/(\r?\n)/);
+    let isFenceOpen = false;
+    let fenceMarker = "";
+    let isCommentOpen = false;
+
+    return lines
+        .map((line) => {
+            if (/^\r?\n$/.test(line)) {
+                return isCommentOpen ? "" : line;
+            }
+
+            const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})/);
+
+            if (!isCommentOpen && fenceMatch) {
+                const marker = fenceMatch[2] || "";
+                const markerChar = marker[0] || "";
+
+                if (!isFenceOpen) {
+                    isFenceOpen = true;
+                    fenceMarker = markerChar;
+                } else if (markerChar === fenceMarker) {
+                    isFenceOpen = false;
+                    fenceMarker = "";
+                }
+
+                return line;
+            }
+
+            if (isFenceOpen) {
+                return line;
+            }
+
+            let nextLine = line;
+
+            while (nextLine.includes("<!--") || isCommentOpen) {
+                const commentStart = isCommentOpen
+                    ? 0
+                    : nextLine.indexOf("<!--");
+                const commentEnd = nextLine.indexOf(
+                    "-->",
+                    isCommentOpen ? 0 : commentStart + 4,
+                );
+
+                if (commentEnd === -1) {
+                    nextLine = nextLine.slice(0, commentStart);
+                    isCommentOpen = true;
+                    break;
+                }
+
+                nextLine =
+                    nextLine.slice(0, commentStart) +
+                    nextLine.slice(commentEnd + 3);
+                isCommentOpen = false;
+            }
+
+            return nextLine;
+        })
+        .join("");
+};
+
 const defaultLinkOpen = markdown.renderer.rules.link_open;
 
 markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
@@ -32,7 +93,9 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
     return self.renderToken(tokens, index, options);
 };
 
-const renderedHtml = computed(() => markdown.render(props.content || ""));
+const renderedHtml = computed(() =>
+    markdown.render(stripHtmlComments(props.content || "")),
+);
 </script>
 
 <template>
