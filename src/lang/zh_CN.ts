@@ -139,6 +139,7 @@ const Games = {
         "命令与征服：红色警戒 2 及尤里的复仇",
     "Borderlands 3": "无主之地3",
     "Hollow Knight": "空洞骑士",
+    "Assassins Creed Odyssey": "刺客信条 奥德赛",
 };
 
 const lang = {
