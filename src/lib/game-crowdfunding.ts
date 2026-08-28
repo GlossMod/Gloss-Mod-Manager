@@ -2,7 +2,11 @@ export const CROWDFUNDING_LABEL_NAME = "无游戏";
 export const CROWDFUNDING_DATA_MARKER = "gmm-game-crowdfunding:v1";
 
 export type CrowdfundingPaymentChannel = "alipay" | "wechat";
-export type CrowdfundingRecordStatus = "pending" | "paid" | "closed";
+export type CrowdfundingRecordStatus =
+    | "pending"
+    | "paid"
+    | "closed"
+    | "failed";
 
 export interface CrowdfundingSteamPrice {
     currency: string;
@@ -30,6 +34,7 @@ export interface CrowdfundingRecord {
     discussionId: string;
     gameName: string;
     steamAppId: number | null;
+    /** Business order number sent to the payment center as `app_order_no`. */
     outTradeNo: string;
     amount: number;
     channel: CrowdfundingPaymentChannel;
@@ -38,8 +43,11 @@ export interface CrowdfundingRecord {
     createdAt: string;
     paidAt?: string;
     closedAt?: string;
+    /** Payment center order number (`payment_order_no`). */
     tradeNo?: string;
     providerStatus?: string;
+    /** Payment center order id (positive integer), used to query the status. */
+    paymentOrderId?: number;
 }
 
 export interface CrowdfundingRecordWithComment extends CrowdfundingRecord {
@@ -82,8 +90,14 @@ export interface CrowdfundingPaymentResponse {
     payment: {
         channel: CrowdfundingPaymentChannel;
         outTradeNo: string;
+        /** Payment center order id (positive integer), required to poll status. */
+        paymentOrderId: number;
+        paymentOrderNo: string;
+        /** Alipay renders an iframe URL; wechat has none. */
         payUrl: string;
+        /** Wechat `code_url`, rendered locally as a QR code. */
         codeUrl: string;
+        expiresAt: string;
     };
     record: CrowdfundingRecordWithComment;
 }

@@ -21,6 +21,12 @@ import {
     type DiscussionComment,
     type DiscussionDetail,
 } from "./github-discussions";
+import {
+    createPayOrder,
+    getPayOrder,
+    readPayOrderCredentials,
+    type PayOrder,
+} from "./pay-client";
 import { readSteamAppId, resolveSteamGame } from "./steam-store";
 
 interface ParsedDiscussionGame {
@@ -35,46 +41,17 @@ interface CrowdfundingPaymentInput {
     discussionNumber: number;
     amount: number;
     channel: CrowdfundingPaymentChannel;
-    alipayChannel: "pc" | "wap";
     payUser: string;
 }
 
 interface CrowdfundingPaymentStatusInput {
     discussionNumber: number;
     outTradeNo: string;
+    /** Payment center order id; the status query addresses the order by id. */
+    paymentOrderId: number | null;
     channel: CrowdfundingPaymentChannel;
     amount: number | null;
     payUser: string;
-}
-
-interface PayCreateResponse {
-    outTradeNo?: string;
-    payUrl?: string;
-    codeUrl?: string;
-    order?: {
-        status?: string;
-    };
-}
-
-interface PayStatusResponse {
-    outTradeNo?: string;
-    status?: string;
-    tradeStatus?: string;
-    tradeState?: string;
-    tradeNo?: string;
-    transactionId?: string;
-    totalAmount?: number | string;
-    total_amount?: number | string;
-    totalAmountFen?: number | string;
-    total_amount_fen?: number | string;
-    totalFee?: number | string;
-    total_fee?: number | string;
-    amount?: number | string;
-    amountFen?: number | string;
-    amount_fen?: number | string;
-    paidAmount?: number | string;
-    paid_amount?: number | string;
-    paidAt?: string;
 }
 
 interface DiscussionBotReplyResponse {
@@ -108,6 +85,19 @@ const toPositiveAmount = (value: unknown) => {
     }
 
     return Math.round(amount * 100) / 100;
+};
+
+/** The payment center only accepts non-negative integer fen. */
+const toAmountFen = (amount: number) => Math.round(amount * 100);
+
+/**
+ * Reads a payment center order id. The id is a positive integer, but it arrives
+ * as a number from the provider and may arrive as a string from JSON clients.
+ */
+const readOrderId = (value: unknown) => {
+    const id = typeof value === "string" ? Number(value.trim()) : Number(value);
+
+    return Number.isInteger(id) && id > 0 ? id : null;
 };
 
 const getCrowdfundingConfig = () => {
@@ -367,7 +357,7 @@ const parseRecordPayload = (payload: unknown): CrowdfundingRecord | null => {
         record.channel === "wechat" || record.channel === "alipay"
             ? record.channel
             : null;
-    const status = ["pending", "paid", "closed"].includes(
+    const status = ["pending", "paid", "closed", "failed"].includes(
         readString(record.status),
     )
         ? (record.status as CrowdfundingRecordStatus)
@@ -413,6 +403,7 @@ const parseRecordPayload = (payload: unknown): CrowdfundingRecord | null => {
         closedAt: readString(record.closedAt) || undefined,
         tradeNo: readString(record.tradeNo) || undefined,
         providerStatus: readString(record.providerStatus) || undefined,
+        paymentOrderId: readOrderId(record.paymentOrderId) ?? undefined,
     };
 };
 
@@ -634,6 +625,10 @@ const createSyntheticCrowdfundingRecord = (
     status,
     createdAt: new Date().toISOString(),
     providerStatus,
+    paymentOrderId:
+        "paymentOrderId" in input
+            ? (input.paymentOrderId ?? undefined)
+            : undefined,
     commentId: "",
 });
 
@@ -794,7 +789,6 @@ export const parseCrowdfundingPaymentInput = (
         payload.channel === "wechat" || payload.channel === "alipay"
             ? payload.channel
             : "alipay";
-    const alipayChannel = payload.alipayChannel === "wap" ? "wap" : "pc";
     const payUser = readString(payload.payUser).slice(0, 80);
 
     if (!Number.isInteger(discussionNumber) || discussionNumber <= 0) {
@@ -815,7 +809,6 @@ export const parseCrowdfundingPaymentInput = (
         discussionNumber,
         amount,
         channel,
-        alipayChannel,
         payUser: payUser || "匿名",
     };
 };
@@ -829,6 +822,7 @@ export const parseCrowdfundingPaymentStatusInput = (
             : {};
     const discussionNumber = Number(payload.discussionNumber);
     const outTradeNo = readString(payload.outTradeNo);
+    const paymentOrderId = readOrderId(payload.paymentOrderId);
     const channel =
         payload.channel === "wechat" || payload.channel === "alipay"
             ? payload.channel
@@ -853,159 +847,68 @@ export const parseCrowdfundingPaymentStatusInput = (
     return {
         discussionNumber,
         outTradeNo,
+        paymentOrderId,
         channel,
         amount: amount > 0 ? amount : null,
         payUser: payUser || "匿名",
     };
 };
 
+const createCrowdfundingOrderNo = (discussionNumber: number) =>
+    `gmm-cf-${discussionNumber}-${Date.now().toString(36)}-${randomUUID().slice(
+        0,
+        8,
+    )}`;
+
 const requestPaymentCreate = async (
     input: CrowdfundingPaymentInput,
     game: CrowdfundingGame,
 ) => {
-    const baseUrl = getCrowdfundingConfig().payApiBaseUrl.replace(/\/$/, "");
-    const path =
-        input.channel === "wechat"
-            ? "/api/pay/wechat/create"
-            : "/api/pay/alipay/create";
-    const response = await $fetch<PayCreateResponse>(`${baseUrl}${path}`, {
-        method: "POST",
-        body: {
-            name: `GMM 游戏众筹：${game.gameName}`.slice(0, 96),
-            amount: input.amount,
-            description:
-                `赞助 GMM 购买 ${game.gameName}，Discussion #${game.discussion.number}`.slice(
-                    0,
-                    180,
-                ),
+    const appOrderNo = createCrowdfundingOrderNo(game.discussion.number);
+    const order = await createPayOrder({
+        app_order_no: appOrderNo,
+        amount_fen: toAmountFen(input.amount),
+        subject: `GMM 游戏众筹：${game.gameName}`.slice(0, 96),
+        channel: input.channel,
+        // The dialog renders the credential itself: an iframe for alipay and a
+        // locally drawn QR code for wechat.
+        payment_form: "native_qr",
+        metadata: {
+            discussionNumber: String(game.discussion.number),
+            gameName: game.gameName.slice(0, 120),
             payUser: input.payUser,
-            ...(input.channel === "alipay"
-                ? { channel: input.alipayChannel }
-                : {}),
         },
     });
-
-    if (!response.outTradeNo) {
-        throw createError({
-            statusCode: 502,
-            statusMessage: "Payment provider did not return an order number.",
-        });
-    }
+    const credentials = readPayOrderCredentials(order);
 
     return {
         channel: input.channel,
-        outTradeNo: response.outTradeNo,
-        payUrl: response.payUrl || "",
-        codeUrl: response.codeUrl || "",
+        outTradeNo: order.app_order_no || appOrderNo,
+        paymentOrderId: order.id,
+        paymentOrderNo: order.payment_order_no || "",
+        payUrl: credentials.iframeUrl || credentials.qrCodeUrl,
+        codeUrl: credentials.codeUrl,
+        expiresAt: order.expires_at || "",
     };
 };
 
-const requestPaymentStatus = async (input: CrowdfundingPaymentStatusInput) => {
-    const baseUrl = getCrowdfundingConfig().payApiBaseUrl.replace(/\/$/, "");
-    const path =
-        input.channel === "wechat"
-            ? "/api/pay/wechat/status"
-            : "/api/pay/alipay/status";
-
-    return $fetch<PayStatusResponse>(`${baseUrl}${path}`, {
-        query: {
-            outTradeNo: input.outTradeNo,
-        },
-    });
-};
-
-const readPaymentAmount = (value: unknown) => {
-    if (typeof value === "number") {
-        return Number.isFinite(value) ? value : null;
-    }
-
-    if (typeof value !== "string") {
-        return null;
-    }
-
-    const normalized = value.trim().replace(/[^\d.-]/g, "");
-    const amount = Number(normalized);
-
-    return Number.isFinite(amount) ? amount : null;
-};
-
-const amountMatches = (current: number, expectedAmount: number | null) =>
-    expectedAmount !== null && Math.abs(current - expectedAmount) <= 0.01;
-
-const normalizeProviderAmount = (
-    response: PayStatusResponse,
-    expectedAmount: number | null,
-) => {
-    const candidates: number[] = [];
-    const addYuanCandidate = (value: unknown) => {
-        const amount = readPaymentAmount(value);
-
-        if (amount === null) {
-            return;
-        }
-
-        candidates.push(toPositiveAmount(amount));
-        candidates.push(toPositiveAmount(amount / 100));
-    };
-    const addFenCandidate = (value: unknown) => {
-        const amount = readPaymentAmount(value);
-
-        if (amount === null) {
-            return;
-        }
-
-        candidates.push(toPositiveAmount(amount / 100));
-    };
-
-    addYuanCandidate(response.totalAmount);
-    addYuanCandidate(response.total_amount);
-    addYuanCandidate(response.amount);
-    addYuanCandidate(response.paidAmount);
-    addYuanCandidate(response.paid_amount);
-    addFenCandidate(response.totalAmountFen);
-    addFenCandidate(response.total_amount_fen);
-    addFenCandidate(response.totalFee);
-    addFenCandidate(response.total_fee);
-    addFenCandidate(response.amountFen);
-    addFenCandidate(response.amount_fen);
-
-    if (!candidates.length) {
-        return null;
-    }
-
-    return (
-        candidates.find((amount) => amountMatches(amount, expectedAmount)) ??
-        candidates[0] ??
-        null
-    );
-};
-
-const normalizeProviderStatus = (
-    response: PayStatusResponse,
-    expectedAmount: number | null,
-) => {
-    const providerStatus =
-        response.tradeStatus || response.tradeState || response.status || "";
-    const isPaid =
-        response.status === "paid" ||
-        response.tradeStatus === "TRADE_SUCCESS" ||
-        response.tradeStatus === "TRADE_FINISHED" ||
-        response.tradeState === "SUCCESS";
-    const isClosed =
-        response.status === "closed" ||
-        response.tradeStatus === "TRADE_CLOSED" ||
-        response.tradeState === "CLOSED";
-    const totalAmount = normalizeProviderAmount(response, expectedAmount);
-
-    return {
-        providerStatus,
-        isPaid,
-        isClosed,
-        totalAmount,
-        paidAt: readString(response.paidAt) || new Date().toISOString(),
-        tradeNo: readString(response.tradeNo || response.transactionId),
-    };
-};
+const normalizeProviderStatus = (order: PayOrder) => ({
+    providerStatus: order.status,
+    isPaid: order.status === "paid",
+    isClosed: order.status === "closed" || order.status === "failed",
+    recordStatus: (order.status === "failed"
+        ? "failed"
+        : order.status === "closed"
+          ? "closed"
+          : order.status) as CrowdfundingRecordStatus,
+    // Amounts are integer fen on the wire; the record keeps yuan.
+    totalAmount:
+        typeof order.amount_fen === "number" && Number.isFinite(order.amount_fen)
+            ? toPositiveAmount(order.amount_fen / 100)
+            : null,
+    paidAt: readString(order.paid_at) || new Date().toISOString(),
+    tradeNo: readString(order.payment_order_no),
+});
 
 export const createCrowdfundingPayment = async (
     input: CrowdfundingPaymentInput,
@@ -1037,6 +940,8 @@ export const createCrowdfundingPayment = async (
         payUser: input.payUser,
         status: "pending",
         createdAt: new Date().toISOString(),
+        tradeNo: payment.paymentOrderNo || undefined,
+        paymentOrderId: payment.paymentOrderId,
         commentId: "",
     };
 
@@ -1068,11 +973,29 @@ export const refreshCrowdfundingPaymentStatus = async (
     }
 
     const expectedAmount = existingRecord?.amount || input.amount;
-    const providerResponse = await requestPaymentStatus(input);
-    const providerStatus = normalizeProviderStatus(
-        providerResponse,
-        expectedAmount,
-    );
+    const paymentOrderId =
+        input.paymentOrderId || existingRecord?.paymentOrderId || null;
+
+    if (!paymentOrderId) {
+        throw createError({
+            statusCode: 400,
+            statusMessage: "A payment order id is required to query the status.",
+        });
+    }
+
+    const providerOrder = await getPayOrder(paymentOrderId);
+
+    if (
+        providerOrder.app_order_no &&
+        providerOrder.app_order_no !== input.outTradeNo
+    ) {
+        throw createError({
+            statusCode: 409,
+            statusMessage: "Payment order does not match the requested record.",
+        });
+    }
+
+    const providerStatus = normalizeProviderStatus(providerOrder);
 
     if (
         providerStatus.isPaid &&
@@ -1112,13 +1035,15 @@ export const refreshCrowdfundingPaymentStatus = async (
             paidAt: providerStatus.paidAt,
             tradeNo: providerStatus.tradeNo || undefined,
             providerStatus: providerStatus.providerStatus,
+            paymentOrderId,
         };
     } else if (providerStatus.isClosed && nextRecord.status === "pending") {
         nextRecord = {
             ...nextRecord,
-            status: "closed",
+            status: providerStatus.recordStatus,
             closedAt: new Date().toISOString(),
             providerStatus: providerStatus.providerStatus,
+            paymentOrderId,
         };
     }
 
@@ -1148,8 +1073,7 @@ export const refreshCrowdfundingPaymentStatus = async (
                 ? updatedGame
                 : withCrowdfundingRecord(updatedGame, updatedRecord),
             record: updatedRecord,
-            paymentStatus:
-                providerStatus.providerStatus || providerResponse.status || "",
+            paymentStatus: providerStatus.providerStatus,
             isPaid: true,
         };
     }
@@ -1157,8 +1081,7 @@ export const refreshCrowdfundingPaymentStatus = async (
     return {
         game,
         record: nextRecord,
-        paymentStatus:
-            providerStatus.providerStatus || providerResponse.status || "",
+        paymentStatus: providerStatus.providerStatus,
         isPaid: false,
     };
 };

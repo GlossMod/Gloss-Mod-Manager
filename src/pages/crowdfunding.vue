@@ -87,8 +87,11 @@ interface PendingCrowdfundingPaymentSession {
     payUser: string;
     channel: CrowdfundingPaymentChannel;
     outTradeNo: string;
+    paymentOrderId: number;
+    paymentOrderNo: string;
     payUrl: string;
     codeUrl: string;
+    expiresAt: string;
     createdAt: string;
 }
 
@@ -519,7 +522,18 @@ const getPendingPayment = (): PendingCrowdfundingPaymentSession | null => {
     }
 
     try {
-        return JSON.parse(rawValue) as PendingCrowdfundingPaymentSession;
+        const session = JSON.parse(
+            rawValue,
+        ) as PendingCrowdfundingPaymentSession;
+
+        // Sessions stored before the payment center migration carry no usable
+        // order id, so the status query could never resolve them.
+        if (!Number.isInteger(session?.paymentOrderId)) {
+            window.localStorage.removeItem(pendingPaymentStorageKey);
+            return null;
+        }
+
+        return session;
     } catch {
         window.localStorage.removeItem(pendingPaymentStorageKey);
         return null;
@@ -546,8 +560,11 @@ const getActivePaymentSession =
             payUser: activePayment.value.record.payUser,
             channel: activePayment.value.payment.channel,
             outTradeNo: activePayment.value.payment.outTradeNo,
+            paymentOrderId: activePayment.value.payment.paymentOrderId,
+            paymentOrderNo: activePayment.value.payment.paymentOrderNo,
             payUrl: activePayment.value.payment.payUrl,
             codeUrl: activePayment.value.payment.codeUrl,
+            expiresAt: activePayment.value.payment.expiresAt,
             createdAt: activePayment.value.record.createdAt,
         };
     };
@@ -561,8 +578,11 @@ const applyPaymentStatusResponse = (
         payment: {
             channel: session.channel,
             outTradeNo: session.outTradeNo,
+            paymentOrderId: session.paymentOrderId,
+            paymentOrderNo: session.paymentOrderNo,
             payUrl: session.payUrl,
             codeUrl: session.codeUrl,
+            expiresAt: session.expiresAt,
         },
         record: response.record,
     };
@@ -577,6 +597,7 @@ const requestPaymentStatus = async (
         body: {
             discussionNumber: session.discussionNumber,
             outTradeNo: session.outTradeNo,
+            paymentOrderId: session.paymentOrderId,
             channel: session.channel,
             amount: session.amount,
             payUser: session.payUser,
@@ -634,9 +655,15 @@ const pollPaymentStatus = async (
                 return;
             }
 
-            if (response.record.status === "closed") {
+            if (
+                response.record.status === "closed" ||
+                response.record.status === "failed"
+            ) {
                 clearPendingPayment();
-                paymentError.value = "订单已关闭，请重新发起支付。";
+                paymentError.value =
+                    response.record.status === "failed"
+                        ? "支付失败，请重新发起支付。"
+                        : "订单已关闭，请重新发起支付。";
                 return;
             }
 
@@ -678,7 +705,10 @@ const syncPendingPaymentStatus = async () => {
             return;
         }
 
-        if (response.record.status === "closed") {
+        if (
+            response.record.status === "closed" ||
+            response.record.status === "failed"
+        ) {
             clearPendingPayment();
         }
     } catch {
@@ -704,7 +734,6 @@ const createPayment = async () => {
                     discussionNumber: selectedGame.value.discussion.number,
                     amount: selectedAmount.value,
                     channel: paymentChannel.value,
-                    alipayChannel: "pc",
                     payUser: payUser.value,
                 },
             },
@@ -715,8 +744,11 @@ const createPayment = async () => {
             payUser: response.record.payUser,
             channel: response.payment.channel,
             outTradeNo: response.payment.outTradeNo,
+            paymentOrderId: response.payment.paymentOrderId,
+            paymentOrderNo: response.payment.paymentOrderNo,
             payUrl: response.payment.payUrl,
             codeUrl: response.payment.codeUrl,
+            expiresAt: response.payment.expiresAt,
             createdAt: response.record.createdAt,
         };
         const paymentUrl = response.payment.payUrl || response.payment.codeUrl;
@@ -889,13 +921,13 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="hidden rounded-lg border bg-card lg:block">
-                <Table class="min-w-[1080px]">
+                <Table class="min-w-270">
                     <TableHeader>
                         <TableRow>
-                            <TableHead class="w-[360px]">游戏</TableHead>
+                            <TableHead class="w-90">游戏</TableHead>
                             <TableHead>价格/目标</TableHead>
                             <TableHead>已筹</TableHead>
-                            <TableHead class="w-[180px]">进度</TableHead>
+                            <TableHead class="w-45">进度</TableHead>
                             <TableHead>剩余</TableHead>
                             <TableHead>参与</TableHead>
                             <TableHead>状态</TableHead>
@@ -964,7 +996,7 @@ onBeforeUnmount(() => {
                     </div>
                     <Select v-model="gameStatusFilter">
                         <SelectTrigger
-                            class="w-full sm:w-[180px]"
+                            class="w-full sm:w-45"
                             aria-label="按众筹状态筛选"
                         >
                             <SelectValue placeholder="全部状态" />
@@ -988,7 +1020,7 @@ onBeforeUnmount(() => {
                 >
                     <Select v-model="gameSortKey">
                         <SelectTrigger
-                            class="w-full sm:w-[180px]"
+                            class="w-full sm:w-45"
                             aria-label="选择排序字段"
                         >
                             <SelectValue placeholder="排序字段" />
@@ -1207,10 +1239,10 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="hidden rounded-lg border bg-card lg:block">
-                <Table class="min-w-[1080px]">
+                <Table class="min-w-270">
                     <TableHeader>
                         <TableRow>
-                            <TableHead class="w-[360px]">
+                            <TableHead class="w-90">
                                 <Button
                                     type="button"
                                     variant="ghost"
@@ -1255,7 +1287,7 @@ onBeforeUnmount(() => {
                                     />
                                 </Button>
                             </TableHead>
-                            <TableHead class="w-[180px]">
+                            <TableHead class="w-45">
                                 <Button
                                     type="button"
                                     variant="ghost"
@@ -1324,9 +1356,7 @@ onBeforeUnmount(() => {
                                 v-for="game in filteredGames"
                                 :key="game.discussion.number"
                             >
-                                <TableCell
-                                    class="min-w-[360px] whitespace-normal"
-                                >
+                                <TableCell class="min-w-90 whitespace-normal">
                                     <div class="flex items-center gap-3">
                                         <div
                                             class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground"
