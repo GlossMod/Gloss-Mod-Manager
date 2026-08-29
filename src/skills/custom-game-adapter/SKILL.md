@@ -1,6 +1,6 @@
 ---
 name: custom-game-adapter
-description: "为未支持的游戏创建自定义适配配置。用户只给出游戏目录时，探测引擎类型、搜索 GlossGameId、生成并写入 Expands JSON，也用于查看、编辑和删除已有的自定义游戏适配。"
+description: "为未支持的游戏创建自定义适配配置。用户只给出游戏目录时，探测引擎类型，并使用 3DM Mods MCP 获取 GlossGameId 和游戏封面，生成并写入 Expands JSON；也用于查看、编辑和删除已有的自定义游戏适配。"
 argument-hint: "Game install directory, game name, or an existing custom adapter to edit"
 ---
 
@@ -22,7 +22,8 @@ argument-hint: "Game install directory, game name, or an existing custom adapter
 ## 核心规则
 
 - 先探测，再生成。不要凭游戏名猜目录结构和引擎类型。
-- 不要猜 GlossGameId。搜不到就填 0，并告知用户在线功能会受限。
+- GlossGameId 和 gameCoverImg 必须优先从 3DM Mods MCP 获取，不要猜测或使用未经验证的值。
+- 3DM Mods MCP 不可用、搜索不到游戏或游戏没有封面时，分别使用 0 或空字符串，并把原因告知用户。
 - gameName 是配置的唯一标识和文件名，用英文、不带特殊字符。
 - 写入前必须先校验。校验不通过就修配置，不要硬写。
 - 覆盖已有配置必须先读出来看一眼，并向用户确认，`overwrite` 不要默认传 true。
@@ -34,8 +35,13 @@ argument-hint: "Game install directory, game name, or an existing custom adapter
 1. 调用 mcp_gloss-mod-man_get-supported-games-list，确认这个游戏是否已经受支持。已支持就不需要适配，转去用 gloss-mod-manager skill。
 2. 调用 mcp_gloss-mod-man_list-custom-games，确认是否已经存在同名的自定义适配。存在就走「编辑已有适配」分支。
 3. 调用 mcp_gloss-mod-man_inspect-game-directory，传入用户给的目录，拿到 engine、exeCandidates、unity/unrealEngine 信息和 notes。
-4. 调用 mcp_gloss-mod-man_search-gloss-game，用游戏名搜 GlossGameId。搜不到就用 0。
-5. 根据探测结果组装配置（见下面「配置生成规则」）。
+4. 使用 3DM Mods MCP 搜索游戏并获取 ID 与封面：
+    - 调用 `mcp_3mod-mcp_get-game-list`，传入 `search` 为游戏中文名、英文名或用户提供的名称，查看候选结果。
+    - 如果返回多个相近候选，把候选的 `id`、`game_name` 和 `game_ename` 列给用户确认，不要自行选择。
+    - 对用户确认的候选调用 `mcp_3mod-mcp_get-game-detail`，传入候选的 `id` 获取权威详情。
+    - 将详情的 `id` 写入 `GlossGameId`，将 `game_cover_imgUrl` 写入 `gameCoverImg`。如果封面值是以 `/` 开头的相对路径，拼成 `https://mod.3dmgame.com` 开头的绝对 URL；已有绝对 URL 原样保留。
+    - 搜索不到、MCP 不可用或详情没有 `game_cover_imgUrl` 时，不要猜测：分别将 `GlossGameId` 设为 0 或将 `gameCoverImg` 留空，并在结果中说明。
+5. 根据探测结果和 3DM Mods MCP 详情组装配置（见下面「配置生成规则」）。
 6. 调用 mcp_gloss-mod-man_validate-custom-game 校验。有 errors 就按提示改，直到通过。warnings 可以接受，但要在最后告知用户。
 7. 调用 mcp_gloss-mod-man_save-custom-game 写入。
 8. 调用 mcp_gloss-mod-man_get-supported-games-list 确认新游戏已经出现在列表里。
@@ -46,7 +52,7 @@ argument-hint: "Game install directory, game name, or an existing custom adapter
 ### 必填字段
 
 - `gameName`: 英文游戏名，无特殊字符。作为文件名和唯一标识。
-- `GlossGameId`: 从 search-gloss-game 拿。搜不到填 0。
+- `GlossGameId`: 从 `mcp_3mod-mcp_get-game-detail` 返回的 `id` 拿。搜索不到或无法调用 3DM Mods MCP 时填 0。
 - `steamAppID`: Steam 游戏填真实 AppId，非 Steam 游戏填 0。
 - `gameExe`: 取 exeCandidates 第一项。若该项 `inRoot` 为 true，直接用文件名字符串；否则用数组形式 `[{ name, rootPath }]`，rootPath 用探测结果里给的值。
 - `modType` 和 `checkModType`: 按引擎选模板，见下。
@@ -64,7 +70,7 @@ argument-hint: "Game install directory, game name, or an existing custom adapter
 
 - `installdir`: Steam 游戏填从 Steam common 目录到游戏主程序的相对路径，可参考探测结果的 folderName。
 - `startExe`: 有 steamAppID 时建议给两个启动方式，一个 `steam://rungameid/<steamAppID>`，一个直接指向 exe 的相对路径。
-- `gameCoverImg`: 封面图 URL，推荐 1200x674 的 webp。没有就留空，但要告知用户列表里不会有封面。
+- `gameCoverImg`: 从 `mcp_3mod-mcp_get-game-detail` 返回的 `game_cover_imgUrl` 获取。相对路径要转换为以 `https://mod.3dmgame.com` 开头的绝对 URL；没有就留空，并告知用户列表里不会有封面。
 
 ### 手写 modType 的规则
 
@@ -108,7 +114,8 @@ checkModType 数组里每条规则需要 `UseFunction`、`Keyword`、`TypeId`：
 - 如果目录不存在：要求用户提供正确的安装根目录，不要自己补路径。
 - 如果 exeCandidates 为空：目录很可能不是游戏根目录，要求用户确认。
 - 如果 engine 是 Unknown：先询问用户这个游戏的 Mod 通常是什么格式、装在哪个目录，再手写 modType，不要凭空编造路径。
-- 如果 search-gloss-game 返回多个相近结果：把候选列给用户选，不要自己挑。
+- 如果 3DM Mods MCP 返回多个相近游戏：把 `id`、中文名和英文名列给用户选，不要自己挑。
+- 如果 3DM Mods MCP 未启用或鉴权失败：告知用户先启用 3DM Mods MCP 并配置 Key；在用户允许继续的情况下，GlossGameId 使用 0、gameCoverImg 留空。
 - 如果校验反复不通过：把 errors 原文告诉用户，说明缺什么，不要绕过校验。
 
 ## 完成标准
@@ -121,7 +128,8 @@ checkModType 数组里每条规则需要 `UseFunction`、`Keyword`、`TypeId`：
 ## 参考工具
 
 - mcp_gloss-mod-man_inspect-game-directory: 探测目录，拿引擎类型和候选主程序。
-- mcp_gloss-mod-man_search-gloss-game: 按名称搜 GlossGameId 和官方 Mod 分类。
+- mcp_3mod-mcp_get-game-list: 按中文名、英文名或描述搜索 3DM 游戏候选。
+- mcp_3mod-mcp_get-game-detail: 按游戏 ID 获取权威游戏信息和 `game_cover_imgUrl`。
 - mcp_gloss-mod-man_list-custom-games: 列出已有的自定义适配。
 - mcp_gloss-mod-man_read-custom-game: 读取单个自定义适配的完整配置。
 - mcp_gloss-mod-man_validate-custom-game: 写入前校验，返回 errors 和 warnings。

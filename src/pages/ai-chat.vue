@@ -746,10 +746,17 @@ async function submitDraft() {
 }
 
 function handleComposerKeydown(event: KeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault();
-        void submitDraft();
+    if (event.key !== "Enter" || event.isComposing) {
+        return;
     }
+
+    // Shift + Enter 换行，直接 Enter 发送
+    if (event.shiftKey) {
+        return;
+    }
+
+    event.preventDefault();
+    void submitDraft();
 }
 
 function applySkill(skill: IAiChatBundledSkill) {
@@ -1290,7 +1297,7 @@ async function stopLocalServer() {
                             v-model="draft"
                             :rows="minComposerRows"
                             class="w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                            placeholder="随心输入，Ctrl + Enter 发送"
+                            placeholder="随心输入，Enter 发送，Shift + Enter 换行"
                             :disabled="!hasConfiguration"
                             @keydown="handleComposerKeydown"
                         ></textarea>
