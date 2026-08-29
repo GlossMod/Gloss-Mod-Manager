@@ -92,6 +92,8 @@ declare global {
   const defineAsyncComponent: typeof import('vue').defineAsyncComponent
   const defineComponent: typeof import('vue').defineComponent
   const defineStore: typeof import('pinia').defineStore
+  const deleteLegacyCustomGameDefinition: typeof import('./lib/legacy-custom-data').deleteLegacyCustomGameDefinition
+  const deleteLegacyCustomTypeDefinition: typeof import('./lib/legacy-custom-data').deleteLegacyCustomTypeDefinition
   const downloadWithAria2: typeof import('./lib/aria2').downloadWithAria2
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
@@ -111,6 +113,7 @@ declare global {
   const fetchThirdPartyMods: typeof import('./lib/third-party-mod-api').fetchThirdPartyMods
   const findGlossDuplicateLocalMods: typeof import('./lib/gloss-download').findGlossDuplicateLocalMods
   const findGlossDuplicateTasks: typeof import('./lib/gloss-download').findGlossDuplicateTasks
+  const findLegacyCustomGameDefinition: typeof import('./lib/legacy-custom-data').findLegacyCustomGameDefinition
   const formatKeywordText: typeof import('./lib/custom-definition-utils').formatKeywordText
   const getActivePinia: typeof import('pinia').getActivePinia
   const getBundledAiChatSkills: typeof import('./lib/ai-chat-skills').getBundledAiChatSkills
@@ -119,6 +122,7 @@ declare global {
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const getExploreTranslationErrorMessage: typeof import('./lib/explore-ai-translation').getExploreTranslationErrorMessage
   const getGlossModPresence: typeof import('./lib/gloss-download').getGlossModPresence
+  const getLegacyConfigRoots: typeof import('./lib/legacy-custom-data').getLegacyConfigRoots
   const getThirdPartyProviderLabel: typeof import('./lib/third-party-mod-api').getThirdPartyProviderLabel
   const getUrlFileName: typeof import('./lib/file-name-utils').getUrlFileName
   const h: typeof import('vue').h
@@ -139,6 +143,7 @@ declare global {
   const initializeTheme: typeof import('./lib/theme').initializeTheme
   const inject: typeof import('vue').inject
   const injectLocal: typeof import('@vueuse/core').injectLocal
+  const inspectGameDirectory: typeof import('./lib/custom-game-builder').inspectGameDirectory
   const installGmmPackage: typeof import('./lib/gmm-package').installGmmPackage
   const installPendingAppUpdate: typeof import('./lib/app-updater').installPendingAppUpdate
   const isAiChatTextLikeMediaType: typeof import('./lib/ai-chat-attachments').isAiChatTextLikeMediaType
@@ -154,6 +159,8 @@ declare global {
   const isThirdPartyProviderSupported: typeof import('./lib/third-party-mod-api').isThirdPartyProviderSupported
   const joinRelativePath: typeof import('./lib/custom-definition-utils').joinRelativePath
   const listArchiveWithSevenZip: typeof import('./lib/sevenZip').listArchiveWithSevenZip
+  const listLegacyCustomGameDefinitions: typeof import('./lib/legacy-custom-data').listLegacyCustomGameDefinitions
+  const listLegacyCustomTypeDefinitions: typeof import('./lib/legacy-custom-data').listLegacyCustomTypeDefinitions
   const loadLegacyCustomGames: typeof import('./lib/legacy-custom-data').loadLegacyCustomGames
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const managerDragKind: typeof import('./lib/manager-internal-drag').managerDragKind
@@ -454,6 +461,7 @@ declare global {
   const useWindowFocus: typeof import('@vueuse/core').useWindowFocus
   const useWindowScroll: typeof import('@vueuse/core').useWindowScroll
   const useWindowSize: typeof import('@vueuse/core').useWindowSize
+  const validateCustomGameDefinition: typeof import('./lib/custom-game-builder').validateCustomGameDefinition
   const validateNexusModsUser: typeof import('./lib/third-party-mod-api').validateNexusModsUser
   const watch: typeof import('vue').watch
   const watchArray: typeof import('@vueuse/core').watchArray
@@ -520,6 +528,9 @@ declare global {
   export type { CustomQueueDownloadStatus, IQueueCustomDownloadOptions, IQueueCustomDownloadResult } from './lib/custom-download-queue'
   import('./lib/custom-download-queue')
   // @ts-ignore
+  export type { TDetectedEngine, IGameExeCandidate, IGameDirectoryInspection, IDefinitionValidationResult } from './lib/custom-game-builder'
+  import('./lib/custom-game-builder')
+  // @ts-ignore
   export type { DotNetTool } from './lib/dotnet-tool'
   import('./lib/dotnet-tool')
   // @ts-ignore
@@ -546,6 +557,9 @@ declare global {
   // @ts-ignore
   export type { Language } from './lib/language'
   import('./lib/language')
+  // @ts-ignore
+  export type { ILegacyCustomGameEntry } from './lib/legacy-custom-data'
+  import('./lib/legacy-custom-data')
   // @ts-ignore
   export type { LocalModImportSourceType, LocalModImportDuplicateStrategy, ILocalModImportSource } from './lib/local-mod-import'
   import('./lib/local-mod-import')

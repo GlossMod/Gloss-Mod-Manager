@@ -6,8 +6,18 @@ import type { Pinia } from "pinia";
 import { computed } from "vue";
 import { ref } from "vue";
 import packageInfo from "../../package.json";
-import { fetchGlossGamePlugins } from "@/lib/gloss-mod-api";
+import {
+    inspectGameDirectory,
+    validateCustomGameDefinition,
+} from "@/lib/custom-game-builder";
+import { fetchAllGlossGames, fetchGlossGamePlugins } from "@/lib/gloss-mod-api";
 import { FileHandler } from "@/lib/FileHandler";
+import {
+    deleteLegacyCustomGameDefinition,
+    findLegacyCustomGameDefinition,
+    listLegacyCustomGameDefinitions,
+    saveLegacyCustomGameDefinition,
+} from "@/lib/legacy-custom-data";
 import { queueGlossModDownload } from "@/lib/gloss-download-queue";
 import { Log } from "@/lib/log";
 import { Manager } from "@/lib/Manager";
@@ -477,6 +487,118 @@ export const mcpToolDefinitions: readonly IMcpToolDefinition[] = [
             ["path"],
         ),
         annotations: { readOnlyHint: true },
+    },
+    {
+        name: "inspect-game-directory",
+        title: "探测游戏目录特征",
+        description:
+            "分析游戏安装目录，返回引擎类型（Unity / IL2CPP / Unreal）、候选主程序、Unreal 项目目录与目录结构，用于推断自定义游戏适配配置。",
+        inputSchema: createObjectSchema(
+            {
+                gamePath: {
+                    type: "string",
+                    description: "游戏安装根目录的绝对路径。",
+                },
+            },
+            ["gamePath"],
+        ),
+        annotations: { readOnlyHint: true },
+    },
+    {
+        name: "search-gloss-game",
+        title: "搜索 Gloss 游戏 ID",
+        description:
+            "按名称关键字在 Gloss Mod 站的游戏列表中搜索，返回匹配的 GlossGameId 与官方 Mod 分类，用于填写自定义游戏配置。",
+        inputSchema: createObjectSchema(
+            {
+                keyword: {
+                    type: "string",
+                    description: "游戏名称关键字，支持中英文部分匹配。",
+                },
+                limit: {
+                    type: "number",
+                    description: "可选，返回条数上限，默认 10。",
+                },
+            },
+            ["keyword"],
+        ),
+        annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    {
+        name: "list-custom-games",
+        title: "列出自定义游戏适配",
+        description:
+            "列出本地 Expands 目录中所有用户自定义的游戏适配 JSON，包含文件路径与配置内容。",
+        inputSchema: emptyObjectSchema,
+        annotations: { readOnlyHint: true },
+    },
+    {
+        name: "read-custom-game",
+        title: "读取自定义游戏适配",
+        description: "按游戏名称读取单个自定义游戏适配 JSON 的完整内容。",
+        inputSchema: createObjectSchema(
+            {
+                gameName: {
+                    type: "string",
+                    description: "自定义游戏配置中的 gameName。",
+                },
+            },
+            ["gameName"],
+        ),
+        annotations: { readOnlyHint: true },
+    },
+    {
+        name: "validate-custom-game",
+        title: "校验自定义游戏适配",
+        description:
+            "在写入前校验自定义游戏适配 JSON 是否合法，返回错误与警告列表。不会写入任何文件。",
+        inputSchema: createObjectSchema(
+            {
+                definition: {
+                    type: "object",
+                    description:
+                        "完整的自定义游戏配置对象，字段与 Expands JSON 一致。",
+                },
+            },
+            ["definition"],
+        ),
+        annotations: { readOnlyHint: true },
+    },
+    {
+        name: "save-custom-game",
+        title: "保存自定义游戏适配",
+        description:
+            "校验并写入自定义游戏适配 JSON 到 Expands 目录，然后刷新支持游戏列表。同名配置会被覆盖，可用于新建与编辑。",
+        inputSchema: createObjectSchema(
+            {
+                definition: {
+                    type: "object",
+                    description:
+                        "完整的自定义游戏配置对象。必填 gameName、GlossGameId、steamAppID、gameExe、modType、checkModType。",
+                },
+                overwrite: {
+                    type: "boolean",
+                    description:
+                        "可选，默认 false。已存在同名配置时必须显式传 true 才会覆盖。",
+                },
+            },
+            ["definition"],
+        ),
+    },
+    {
+        name: "delete-custom-game",
+        title: "删除自定义游戏适配",
+        description:
+            "删除指定名称的自定义游戏适配 JSON，并同时移除该游戏的自定义类型文件，然后刷新支持游戏列表。",
+        inputSchema: createObjectSchema(
+            {
+                gameName: {
+                    type: "string",
+                    description: "要删除的自定义游戏 gameName。",
+                },
+            },
+            ["gameName"],
+        ),
     },
 ] as const;
 
@@ -1602,6 +1724,153 @@ async function handleToolCall(
                     contents,
                     truncated,
                     totalLength: fileContent.length,
+                });
+            }
+            case "inspect-game-directory": {
+                const gamePath = toRequiredString(args.gamePath, "gamePath");
+                const inspection = await inspectGameDirectory(gamePath);
+
+                if (!inspection.exists) {
+                    throw new Error(
+                        `目录不存在：${gamePath}。请确认用户提供的是游戏安装根目录。`,
+                    );
+                }
+
+                return createToolResult(inspection);
+            }
+            case "search-gloss-game": {
+                const keyword = toRequiredString(args.keyword, "keyword");
+                const limit = Math.max(
+                    1,
+                    Math.floor(toOptionalNumber(args.limit, 10)),
+                );
+                const normalizedKeyword = keyword.toLowerCase();
+                const allGames = await fetchAllGlossGames();
+                const matched = allGames
+                    .filter((item) => {
+                        return (item.game_name ?? "")
+                            .toLowerCase()
+                            .includes(normalizedKeyword);
+                    })
+                    .slice(0, limit)
+                    .map((item) => {
+                        return {
+                            GlossGameId: item.id,
+                            gameName: item.game_name ?? "",
+                            modTypes: (item.game_mod_types ?? []).map((type) => {
+                                return {
+                                    id: type.id,
+                                    name: type.mods_type_name,
+                                };
+                            }),
+                        };
+                    });
+
+                return createToolResult({
+                    keyword,
+                    games: matched,
+                    count: matched.length,
+                });
+            }
+            case "list-custom-games": {
+                const entries = await listLegacyCustomGameDefinitions();
+
+                return createToolResult({
+                    games: entries.map((item) => {
+                        return {
+                            gameName: item.gameName,
+                            filePath: item.filePath,
+                            GlossGameId: item.definition.GlossGameId,
+                            steamAppID: item.definition.steamAppID,
+                            modType: item.definition.modType,
+                        };
+                    }),
+                    count: entries.length,
+                });
+            }
+            case "read-custom-game": {
+                const gameName = toRequiredString(args.gameName, "gameName");
+                const entry = await findLegacyCustomGameDefinition(gameName);
+
+                if (!entry) {
+                    throw new Error(`未找到名为 ${gameName} 的自定义游戏配置。`);
+                }
+
+                return createToolResult({
+                    gameName: entry.gameName,
+                    filePath: entry.filePath,
+                    definition: entry.definition,
+                });
+            }
+            case "validate-custom-game": {
+                if (!isPlainObject(args.definition)) {
+                    throw new Error("definition 必须是配置对象。");
+                }
+
+                return createToolResult(
+                    validateCustomGameDefinition(args.definition),
+                );
+            }
+            case "save-custom-game": {
+                if (!isPlainObject(args.definition)) {
+                    throw new Error("definition 必须是配置对象。");
+                }
+
+                const definition = args.definition;
+                const validation = validateCustomGameDefinition(definition);
+
+                if (!validation.valid) {
+                    throw new Error(
+                        `配置校验未通过：${validation.errors.join(" ")}`,
+                    );
+                }
+
+                const gameName = toRequiredString(
+                    definition.gameName,
+                    "definition.gameName",
+                );
+                const overwrite = toOptionalBoolean(args.overwrite, false);
+                const existing =
+                    await findLegacyCustomGameDefinition(gameName);
+
+                // 覆盖是不可逆的，必须由调用方显式确认，避免误删用户已经调好的配置。
+                if (existing && !overwrite) {
+                    throw new Error(
+                        `已存在名为 ${gameName} 的自定义游戏配置（${existing.filePath}）。如需覆盖请传 overwrite 为 true。`,
+                    );
+                }
+
+                const { manager } = getStores();
+
+                await saveLegacyCustomGameDefinition(
+                    definition as unknown as IExpandsSupportedGames,
+                );
+                await manager.reloadSupportedGames();
+
+                return createToolResult({
+                    state: true,
+                    gameName,
+                    overwritten: Boolean(existing),
+                    warnings: validation.warnings,
+                    message: `已${existing ? "更新" : "创建"}自定义游戏配置 ${gameName}，支持游戏列表已刷新。`,
+                });
+            }
+            case "delete-custom-game": {
+                const gameName = toRequiredString(args.gameName, "gameName");
+                const { manager } = getStores();
+                const removed =
+                    await deleteLegacyCustomGameDefinition(gameName);
+
+                if (!removed) {
+                    throw new Error(`未找到名为 ${gameName} 的自定义游戏配置。`);
+                }
+
+                await manager.reloadSupportedGames();
+
+                return createToolResult({
+                    state: true,
+                    gameName,
+                    message: `已删除自定义游戏配置 ${gameName}，支持游戏列表已刷新。`,
                 });
             }
             default:

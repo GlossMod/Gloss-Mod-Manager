@@ -216,7 +216,7 @@ function mergeRuntimeTypes(baseTypes: IType[], extraTypes: IType[]) {
     return [...typeMap.values()];
 }
 
-async function getLegacyConfigRoots() {
+export async function getLegacyConfigRoots() {
     if (legacyConfigRootsPromise) {
         return legacyConfigRootsPromise;
     }
@@ -439,6 +439,125 @@ async function loadLegacyCustomTypes(gameName: string) {
 
     legacyCustomTypePromiseMap.set(cacheKey, loadPromise);
     return loadPromise;
+}
+
+export interface ILegacyCustomGameEntry {
+    gameName: string;
+    filePath: string;
+    definition: IExpandsSupportedGames;
+}
+
+/**
+ * 列出磁盘上所有自定义游戏 JSON（Expands 目录），带原始定义与文件路径。
+ *
+ * 与 loadLegacyCustomGames 不同：这里不做运行时解析（不把字符串模板换成真实
+ * 函数），返回的是可直接回写的原始 JSON，供编辑和删除使用。
+ */
+export async function listLegacyCustomGameDefinitions() {
+    const files = await loadLegacyJsonFiles("Expands");
+    const entries: ILegacyCustomGameEntry[] = [];
+
+    for (const filePath of files) {
+        const definition = await readJsonFile<IExpandsSupportedGames>(filePath);
+
+        if (!definition?.gameName?.trim()) {
+            continue;
+        }
+
+        entries.push({
+            gameName: definition.gameName,
+            filePath,
+            definition,
+        });
+    }
+
+    return entries;
+}
+
+export async function findLegacyCustomGameDefinition(gameName: string) {
+    const target = normalizeCompareText(gameName);
+    const entries = await listLegacyCustomGameDefinitions();
+
+    return (
+        entries.find((item) => {
+            return normalizeCompareText(item.gameName) === target;
+        }) ?? null
+    );
+}
+
+/**
+ * 删除自定义游戏 JSON，同时清掉同名的 Types 文件（如果存在）。
+ */
+export async function deleteLegacyCustomGameDefinition(gameName: string) {
+    const entry = await findLegacyCustomGameDefinition(gameName);
+
+    if (!entry) {
+        return false;
+    }
+
+    if (!(await FileHandler.deleteFile(entry.filePath))) {
+        throw new Error("删除自定义游戏配置失败。");
+    }
+
+    invalidateLegacyCache("Expands");
+
+    const typeFile = await readLegacyTypeFile(gameName);
+    if (typeFile) {
+        await FileHandler.deleteFile(typeFile);
+        invalidateLegacyCache("Types", gameName);
+    }
+
+    return true;
+}
+
+export async function listLegacyCustomTypeDefinitions(gameName: string) {
+    const filePath = await readLegacyTypeFile(gameName);
+
+    if (!filePath) {
+        return [] as IExpandsType[];
+    }
+
+    return (
+        (await readJsonFile<IExpandsType[]>(filePath))?.filter(Boolean) ?? []
+    );
+}
+
+/**
+ * 按名称删除某个游戏下的单个自定义 Mod 类型。
+ */
+export async function deleteLegacyCustomTypeDefinition(
+    gameName: string,
+    typeName: string,
+) {
+    const filePath = await readLegacyTypeFile(gameName);
+
+    if (!filePath) {
+        return false;
+    }
+
+    const currentList =
+        (await readJsonFile<IExpandsType[]>(filePath))?.filter(Boolean) ?? [];
+    const target = normalizeCompareText(typeName);
+    const nextList = currentList.filter((item) => {
+        return normalizeCompareText(item.name) !== target;
+    });
+
+    if (nextList.length === currentList.length) {
+        return false;
+    }
+
+    const saved = await FileHandler.writeFile(
+        filePath,
+        JSON.stringify(nextList, null, 4),
+    );
+
+    if (!saved) {
+        throw new Error("写入自定义类型配置失败。");
+    }
+
+    invalidateLegacyCache("Types", gameName);
+
+    return true;
 }
 
 export async function saveLegacyCustomGameDefinition(
