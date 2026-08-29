@@ -394,6 +394,12 @@ export class Aria2Rpc {
         let lastError: unknown = null;
 
         while (Date.now() < deadline) {
+            // 端口还没起来时不发 fetch，避免控制台被连接失败刷屏。
+            if (!(await Aria2Rpc.isRpcPortOpen(options, 250))) {
+                await Aria2Rpc.sleep(250);
+                continue;
+            }
+
             try {
                 await Aria2Rpc.request("getVersion", [], options, 1000);
                 return;
@@ -408,10 +414,34 @@ export class Aria2Rpc {
             : new Error("aria2 RPC 启动超时");
     }
 
+    /**
+     * 先在 Rust 侧做一次 TCP 探测，确认端口有人监听再发 RPC。
+     * WebKit 会把 fetch 的连接失败直接打到控制台且无法从 JS 静音，
+     * aria2 未启动时的轮询会刷出大量 "Could not connect to the server."。
+     */
+    private static async isRpcPortOpen(
+        options: IResolvedRpcOptions,
+        timeoutMs: number,
+    ) {
+        try {
+            return await invoke<boolean>("app_is_local_port_open", {
+                port: options.listenPort,
+                timeoutMs: Math.min(timeoutMs, 1000),
+            });
+        } catch {
+            // 命令不可用时退回直接请求，行为与探测前一致。
+            return true;
+        }
+    }
+
     private static async ping(
         options: IResolvedRpcOptions,
         timeoutMs: number = 1000,
     ) {
+        if (!(await Aria2Rpc.isRpcPortOpen(options, timeoutMs))) {
+            return false;
+        }
+
         try {
             await Aria2Rpc.request("getVersion", [], options, timeoutMs);
             return true;

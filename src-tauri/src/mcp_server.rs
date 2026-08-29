@@ -676,7 +676,7 @@ fn write_response(
     let mut response = format!(
         "HTTP/1.1 {} {}\r\n\
 Vary: Origin\r\n\
-Access-Control-Allow-Headers: content-type, accept, authorization, user-agent, x-gmm-mcp-token, mcp-protocol-version, mcp-session-id, last-event-id\r\n\
+Access-Control-Allow-Headers: content-type, accept, authorization, user-agent, x-gmm-mcp-token, mcp-protocol-version, mcp-session-id, mcp-method, mcp-name, last-event-id\r\n\
 Access-Control-Expose-Headers: content-type, mcp-session-id, www-authenticate\r\n\
 Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n\
 Access-Control-Max-Age: 600\r\n\
@@ -839,6 +839,22 @@ mod tests {
         let response = capture_response(403, None);
 
         assert!(!response.contains("Access-Control-Allow-Origin"));
+    }
+
+    /// MCP 客户端会按请求体自动写入 mcp-method / mcp-name，
+    /// 预检没放行这两个头时 WebKit 会直接拦下真实请求。
+    #[test]
+    fn preflight_allows_body_derived_mcp_headers() {
+        let response = capture_response(204, Some("http://localhost:1420"));
+        let allow_headers = response
+            .split("\r\n")
+            .find(|line| line.starts_with("Access-Control-Allow-Headers:"))
+            .expect("响应缺少 Access-Control-Allow-Headers");
+
+        assert!(allow_headers.contains("mcp-method"));
+        assert!(allow_headers.contains("mcp-name"));
+        assert!(allow_headers.contains("mcp-protocol-version"));
+        assert!(allow_headers.contains("mcp-session-id"));
     }
 
     /// 通配符会让任意网页都能读到本地 MCP 响应，必须始终回显具体来源。
