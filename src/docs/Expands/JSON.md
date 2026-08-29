@@ -30,7 +30,7 @@
             "name": "",         // 在管理界面显示的名称
             "installPath": "",  // 安装路径
             "install": {
-                // UseFunction 参考 https://gist.github.com/3DMXM/ed15e18a1442d69bfafcb05534561fc4
+                // UseFunction 参考 https://github.com/GlossMod/Gloss-Mod-Manager/blob/v2/src/lib/Manager.ts
                 // "generalInstall" | "generalUninstall" | "installByFolder" | "installByFile" | "installByFileSibling" | "installByFolderParent" | "Unknown"
                 // 其他参数是传递到 UseFunction 里面的值, 只需要填 UseFunction 需要的即可, 均有注释.
                 "UseFunction": "",
