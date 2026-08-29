@@ -649,7 +649,14 @@ export const useAiChatStore = defineStore("AiChat", () => {
             modelList.value = models;
             modelLoadError.value = "";
 
-            if (!selectedModelId.value.trim() && models.length > 0) {
+            // 选中的模型 ID 是持久化的，换服务商或服务端下线模型后会失效，
+            // 继续拿它发请求会被上游报 "Model not exist."，这里回落到第一个可用模型。
+            const currentModelId = selectedModelId.value.trim();
+            const currentModelAvailable = models.some((model) => {
+                return model.id === currentModelId;
+            });
+
+            if (!currentModelAvailable && models.length > 0) {
                 selectedModelId.value = models[0].id;
             }
         } catch (error) {
@@ -1085,6 +1092,9 @@ export const useAiChatStore = defineStore("AiChat", () => {
             sessionError.value = configurationErrorMessage.value;
             return;
         }
+
+        // 换了地址/凭据后旧模型列表和选中项都可能失效，先重新拉取再重建会话。
+        await refreshModels();
 
         if (!selectedModelId.value.trim()) {
             return;

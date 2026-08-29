@@ -156,15 +156,39 @@ export class AiChat {
     private apiKey: string;
     private providerBaseURL: string;
     private provider?: ReturnType<typeof createOpenAICompatible>;
+    // 用户填的地址可能省略 /v1，真实可用的 base 需要探测 /models 才能确定。
+    // 只有候选地址唯一时才能直接认定已解析。
+    private providerBaseUrlResolved: boolean;
 
     constructor(baseURL: string, apiKey: string) {
         this.baseURL = baseURL;
         this.apiKey = apiKey.trim();
         this.providerBaseURL = this.normalizeProviderBaseUrl(baseURL);
+        this.providerBaseUrlResolved =
+            this.buildModelRequestUrls().length <= 1;
     }
 
     public get Agent() {
         return this.getProvider();
+    }
+
+    /**
+     * 确保 provider 的 base URL 指向真实可用的端点。
+     * 直接拿 Agent 发对话请求前必须先 await 一次，否则用户填根地址时
+     * 会把请求发到 `<root>/chat/completions`，被网关判成模型不存在。
+     */
+    public async ensureProviderBaseUrl(): Promise<void> {
+        if (this.providerBaseUrlResolved) {
+            return;
+        }
+
+        try {
+            await this.getModels();
+        } catch {
+            // 探测失败时保持原地址，真实错误留给后续对话请求抛出。
+        }
+
+        this.providerBaseUrlResolved = true;
     }
 
     //#region 获取模型列表
@@ -216,6 +240,7 @@ export class AiChat {
                 this.updateProviderBaseUrl(
                     requestUrl.replace(/\/models$/u, ""),
                 );
+                this.providerBaseUrlResolved = true;
 
                 return this.normalizeModels(payload.data);
             } catch (error) {
@@ -250,6 +275,8 @@ export class AiChat {
         if (!modelId) {
             throw new Error("请先选择或填写模型 ID。");
         }
+
+        await this.ensureProviderBaseUrl();
 
         const { connections, snapshots } = await this.loadServerConnections(
             options.enabledServers ?? {},
@@ -692,7 +719,7 @@ export class AiChat {
             }),
             "list-mcp-resources": tool({
                 description:
-                    "列出当前已启用 MCP 服务器暴露的资源。读取资源内容前应先调用它。",
+                    "列出当前已启用 MCP 服务器暴露的资源。系统提示词里已有完整清单，仅在怀疑清单已过期时才需要调用。",
                 inputSchema: z.object({
                     serverId: z
                         .string()
@@ -740,7 +767,7 @@ export class AiChat {
             }),
             "read-mcp-resource": tool({
                 description:
-                    "读取指定 MCP 资源的内容。仅在已知 serverId 和资源 URI 时调用。",
+                    "读取指定 MCP 资源的内容。系统提示词里已列出全部可用资源的 serverId 和 uri，可直接调用。",
                 inputSchema: z.object({
                     serverId: z
                         .string()
@@ -798,7 +825,7 @@ export class AiChat {
             }),
             "list-mcp-prompts": tool({
                 description:
-                    "列出当前已启用 MCP 服务器暴露的 Prompt 模板。读取 Prompt 内容前应先调用它。",
+                    "列出当前已启用 MCP 服务器暴露的 Prompt 模板。系统提示词里已有完整清单，仅在怀疑清单已过期时才需要调用。",
                 inputSchema: z.object({
                     serverId: z
                         .string()
@@ -851,7 +878,7 @@ export class AiChat {
             }),
             "get-mcp-prompt": tool({
                 description:
-                    "获取指定 MCP Prompt 模板的完整内容，可用于理解服务器提供的工作流或文案模板。",
+                    "获取指定 MCP Prompt 模板的完整内容，可用于理解服务器提供的工作流或文案模板。系统提示词里已列出全部可用 Prompt 的 serverId 和 name，可直接调用。",
                 inputSchema: z.object({
                     serverId: z
                         .string()
@@ -1008,11 +1035,20 @@ export class AiChat {
         const serverLines = snapshots
             .filter((snapshot) => snapshot.enabled)
             .map((snapshot) => {
-                if (snapshot.status === "ready") {
-                    return `- ${snapshot.label}: Tools ${snapshot.tools.length} 项，Resources ${snapshot.resources.length} 项，Prompts ${snapshot.prompts.length} 项。`;
+                if (snapshot.status !== "ready") {
+                    return `- ${snapshot.label}: 当前不可用，原因：${snapshot.error || "unknown error"}`;
                 }
 
-                return `- ${snapshot.label}: 当前不可用，原因：${snapshot.error || "unknown error"}`;
+                // Tools 的定义会原样交给模型，这里只报数量；
+                // Resources / Prompts 不进工具列表，必须把 URI 和名称摊开写，
+                // 否则模型只知道有几项、不知道是什么，就不会去读。
+                const lines: string[] = [
+                    `- ${snapshot.label}（serverId: ${snapshot.id}）: Tools ${snapshot.tools.length} 项，Resources ${snapshot.resources.length} 项，Prompts ${snapshot.prompts.length} 项。`,
+                    ...this.buildResourceInventoryLines(snapshot.resources),
+                    ...this.buildPromptInventoryLines(snapshot.prompts),
+                ];
+
+                return lines.join("\n");
             })
             .join("\n");
 
@@ -1023,11 +1059,71 @@ export class AiChat {
                 ? `当前已接入的 MCP 服务：\n${serverLines}`
                 : "当前没有启用任何 MCP 服务。",
             "当问题涉及当前应用状态、当前游戏、Mod 管理或站点上下文时，优先调用工具。",
-            "如果需要 MCP 资源或 Prompt，请先调用 list-mcp-resources / list-mcp-prompts，再读取目标项。",
+            "上面已列出全部可用的 MCP 资源与 Prompt，可直接用 read-mcp-resource / get-mcp-prompt 读取目标项，不需要先调用 list-mcp-resources / list-mcp-prompts。",
             skillsPrompt,
         ]
             .filter(Boolean)
             .join("\n\n");
+    }
+
+    private buildResourceInventoryLines(
+        resources: IAiChatMcpResourceInfo[],
+    ): string[] {
+        if (resources.length === 0) {
+            return [];
+        }
+
+        return [
+            "  可用 Resources（用 read-mcp-resource 按 uri 读取）：",
+            ...resources.map((resource) => {
+                const label = resource.title || resource.name;
+                const description = this.summarizeText(resource.description);
+
+                return `    - ${resource.uri}${label ? `（${label}）` : ""}${
+                    description ? `：${description}` : ""
+                }`;
+            }),
+        ];
+    }
+
+    private buildPromptInventoryLines(
+        prompts: IAiChatMcpPromptInfo[],
+    ): string[] {
+        if (prompts.length === 0) {
+            return [];
+        }
+
+        return [
+            "  可用 Prompts（用 get-mcp-prompt 按 name 读取）：",
+            ...prompts.map((promptItem) => {
+                const label = promptItem.title;
+                const description = this.summarizeText(promptItem.description);
+                const promptArguments = (promptItem.arguments ?? [])
+                    .map((argument) => {
+                        return `${argument.name}${argument.required ? "(必填)" : ""}`;
+                    })
+                    .join(", ");
+
+                return `    - ${promptItem.name}${label ? `（${label}）` : ""}${
+                    description ? `：${description}` : ""
+                }${promptArguments ? ` 参数：${promptArguments}` : ""}`;
+            }),
+        ];
+    }
+
+    // 清单只用来让模型知道有什么，描述过长会挤占上下文，这里压到一行以内。
+    private summarizeText(text?: string, maxLength: number = 120) {
+        const normalized = text?.replace(/\s+/gu, " ").trim();
+
+        if (!normalized) {
+            return "";
+        }
+
+        if (normalized.length <= maxLength) {
+            return normalized;
+        }
+
+        return `${normalized.slice(0, maxLength)}…`;
     }
 
     private async disposeConnections(

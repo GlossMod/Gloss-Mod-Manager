@@ -236,6 +236,9 @@ async function resolveModel(baseUrl: string, apiKey: string, modelId?: string) {
     const normalizedModelId = normalizeText(modelId);
 
     if (normalizedModelId) {
+        // 指定了模型时不会走 getModels，仍要显式解析一次真实的 base URL。
+        await service.ensureProviderBaseUrl();
+
         return {
             service,
             modelId: normalizedModelId,
