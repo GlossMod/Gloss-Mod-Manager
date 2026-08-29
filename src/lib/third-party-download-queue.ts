@@ -5,6 +5,7 @@ import {
     type IAria2RuntimeSettings,
 } from "@/lib/aria2-rpc";
 import { FileHandler } from "@/lib/FileHandler";
+import { getUrlFileName, sanitizeFileName } from "@/lib/file-name-utils";
 import {
     findGlossDuplicateLocalMods,
     findGlossDuplicateTasks,
@@ -63,23 +64,6 @@ const THIRD_PARTY_DOWNLOAD_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
 const FILE_EXTENSION_PATTERN =
     /\.(tar\.(?:gz|xz|bz2)|zip|7z|rar|tar|gz|xz|bz2|exe|dll|pak|bin)$/iu;
-
-function sanitizeFileName(name: string) {
-    return name.replace(/[<>:"/\\|?*\u0000-\u001F]/gu, "-").trim();
-}
-
-function getUrlFileName(url: string) {
-    try {
-        const parsed = new URL(url);
-        const fileName = decodeURIComponent(
-            parsed.pathname.split("/").pop() || "download.bin",
-        );
-
-        return sanitizeFileName(fileName) || "download.bin";
-    } catch {
-        return "download.bin";
-    }
-}
 
 function getUrlExtension(url: string) {
     try {

@@ -21,11 +21,6 @@
                     "args": true
                 },
                 {
-                    "name": "cmd",
-                    "cmd": "cmd",
-                    "args": true
-                },
-                {
                     "name": "powershell",
                     "cmd": "powershell",
                     "args": true
@@ -59,11 +54,6 @@
                     "args": true
                 },
                 {
-                    "name": "cmd",
-                    "cmd": "cmd",
-                    "args": true
-                },
-                {
                     "name": "powershell",
                     "cmd": "powershell",
                     "args": true
@@ -91,6 +81,7 @@
         "store:allow-load",
         "store:allow-keys",
         "stronghold:default",
+        "stronghold:allow-remove-store-record",
         "dialog:default",
         "log:default",
         "shell:default",

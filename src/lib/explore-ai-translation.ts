@@ -302,7 +302,8 @@ async function translateChunk(
             description: "Translated display-only text for mod browsing cards.",
             schema: translationResultSchema,
         }),
-        system: "你是 Gloss Mod Manager 的 Mod 元数据翻译器。只返回符合 schema 的 JSON，不要改写任何功能字段。",
+        instructions:
+            "你是 Gloss Mod Manager 的 Mod 元数据翻译器。只返回符合 schema 的 JSON，不要改写任何功能字段。",
         prompt: buildTranslationPrompt(
             request.source,
             request.targetLocale,

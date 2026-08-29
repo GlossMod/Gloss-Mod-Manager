@@ -1,11 +1,21 @@
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { stepCountIs, tool, ToolLoopAgent, type ToolSet } from "ai";
+import {
+    isStepCount,
+    pruneMessages,
+    tool,
+    ToolLoopAgent,
+    type ToolSet,
+} from "ai";
 import { z } from "zod";
 import packageInfo from "../../package.json";
 import { buildBundledAiChatSkillsPrompt } from "@/lib/ai-chat-skills";
+import {
+    buildMcpToolDriftWarnings,
+    checkMcpToolDrift,
+} from "@/lib/mcp-tool-drift";
 import { McpService } from "@/lib/mcp-service";
-import { PersistentStore } from "@/lib/persistent-store";
+import { SecretStore } from "@/lib/secret-store";
 import { useManager } from "@/stores/manager";
 
 interface IOpenAICompatibleModelItem {
@@ -114,8 +124,31 @@ interface IAiChatCreateSessionOptions {
     enabledServers?: Partial<Record<AiChatMcpServerId, boolean>>;
 }
 
-function runtimeFetch(...args: Parameters<typeof fetch>) {
-    return globalThis.fetch(...args);
+// WebKit（macOS/iOS 的 WKWebView）不把 user-agent 当作禁止修改的请求头，
+// 而是当成普通自定义头参与 CORS 预检，导致 MCP 请求被
+// "Request header field User-Agent is not allowed by Access-Control-Allow-Headers" 拦下。
+// @ai-sdk/mcp 的 HTTP transport 每次都会写入该头，这里在出栈前统一剔除。
+function stripForbiddenHeaders(init?: RequestInit): RequestInit | undefined {
+    if (!init?.headers) {
+        return init;
+    }
+
+    const headers = new Headers(init.headers);
+
+    if (!headers.has("user-agent")) {
+        return init;
+    }
+
+    headers.delete("user-agent");
+
+    return { ...init, headers };
+}
+
+function runtimeFetch(
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+) {
+    return globalThis.fetch(input, stripForbiddenHeaders(init));
 }
 
 export class AiChat {
@@ -223,12 +256,15 @@ export class AiChat {
         );
 
         const tools = this.createBuiltinTools(connections);
-        const registeredToolNames = new Set(Object.keys(tools));
+        const builtinToolNames = Object.keys(tools);
+        const registeredToolNames = new Set(builtinToolNames);
 
         for (const connection of connections.values()) {
             const mcpTools = connection.client.toolsFromDefinitions(
                 connection.toolDefinitions,
             );
+
+            await this.appendToolDriftWarnings(connection, mcpTools);
 
             for (const [toolName, toolDefinition] of Object.entries(mcpTools)) {
                 if (registeredToolNames.has(toolName)) {
@@ -251,7 +287,21 @@ export class AiChat {
                 snapshots,
             ),
             tools,
-            stopWhen: stepCountIs(10),
+            // 内置工具固定排在最前，保持工具定义顺序稳定以提升服务端缓存命中率。
+            toolOrder: builtinToolNames.filter((toolName) => {
+                return toolName in tools;
+            }),
+            // 多步工具调用时，历史步骤的思考内容对后续决策没有价值，裁掉可以降低上下文体积。
+            // 工具调用结果不裁剪：Skills 里的工作流常需要引用前面步骤拿到的列表或资源内容。
+            prepareStep: ({ messages }) => {
+                return {
+                    messages: pruneMessages({
+                        messages,
+                        reasoning: "before-last-message",
+                    }),
+                };
+            },
+            stopWhen: isStepCount(10),
         });
 
         return {
@@ -384,9 +434,8 @@ export class AiChat {
     private async getServerConfigs(
         enabledServers: Partial<Record<AiChatMcpServerId, boolean>>,
     ): Promise<IAiChatServerConfig[]> {
-        const glossModKey =
-            (await PersistentStore.get<string>("glossModKey", ""))?.trim() ??
-            "";
+        const glossModKey = (await SecretStore.getSafe("glossModKey")).trim();
+        const localMcpToken = McpService.authToken.value.trim();
 
         return [
             {
@@ -395,10 +444,20 @@ export class AiChat {
                 description: "本地 MCP 服务，提供当前管理器和游戏上下文能力。",
                 endpoint: McpService.endpoint.value,
                 enabled: enabledServers["gloss-mod-manager"] ?? true,
-                warnings: [],
+                warnings: localMcpToken
+                    ? []
+                    : ["本地 MCP 服务尚未就绪或未生成访问令牌，请先启动服务。"],
                 transport: {
                     type: "http",
                     url: McpService.endpoint.value,
+                    // 本地服务每次启动生成一次性令牌，请求必须携带才能通过鉴权。
+                    ...(localMcpToken
+                        ? {
+                              headers: {
+                                  authorization: `Bearer ${localMcpToken}`,
+                              },
+                          }
+                        : {}),
                 },
             },
             {
@@ -514,6 +573,33 @@ export class AiChat {
             connections,
             snapshots,
         };
+    }
+
+    /**
+     * 校验 MCP 工具定义是否相对上次连接发生变化，把结果并入该服务的告警列表。
+     * 指纹读写失败不应阻断会话创建，因此这里只记录日志。
+     */
+    private async appendToolDriftWarnings(
+        connection: IAiChatMcpConnection,
+        mcpTools: ToolSet,
+    ) {
+        try {
+            const drift = await checkMcpToolDrift(
+                connection.snapshot.id,
+                mcpTools,
+            );
+
+            if (!drift) {
+                return;
+            }
+
+            connection.snapshot.warnings = [
+                ...connection.snapshot.warnings,
+                ...buildMcpToolDriftWarnings(drift),
+            ];
+        } catch (error) {
+            console.error("校验 MCP 工具定义变化失败", error);
+        }
     }
 
     private async safeListResources(

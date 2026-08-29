@@ -3,7 +3,6 @@
  */
 
 import { app } from "@tauri-apps/api";
-import { fetch } from "@tauri-apps/plugin-http";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import type { FirebaseApp, FirebaseOptions } from "firebase/app";
 import {
@@ -14,6 +13,7 @@ import {
     setUserProperties,
 } from "firebase/analytics";
 import type { Analytics } from "firebase/analytics";
+import { requestWithRetry } from "@/lib/http-client";
 import { PersistentStore } from "@/lib/persistent-store";
 
 interface IAnalyticsEventData {
@@ -89,12 +89,14 @@ export class AppAnalytics {
     }
 
     private static async sendGlossAnalytics(data: IAnalyticsEventData) {
-        const res = await fetch(analyticsEndpoint, {
+        // 统计上报属于非关键请求，不必重试，但仍需超时保护。
+        const res = await requestWithRetry(analyticsEndpoint, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({ data }),
+            maxRetries: 0,
         });
 
         console.log({
@@ -132,6 +134,15 @@ export class AppAnalytics {
 
     private static async initializeFirebaseAnalytics(): Promise<Analytics | null> {
         try {
+            // 本地开发环境往往没有配置 Firebase（相关变量只在 CI 注入），
+            // 缺少必填项时直接跳过，避免抛出误导性的初始化错误。
+            if (!firebaseConfig.projectId || !firebaseConfig.appId) {
+                console.info(
+                    "未配置 Firebase Analytics，已跳过初始化。",
+                );
+                return null;
+            }
+
             if (!(await isSupported())) {
                 console.warn(
                     "当前环境不支持 Firebase Analytics。/ Firebase Analytics is not supported in this environment.",

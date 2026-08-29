@@ -60,6 +60,8 @@ fn normalize_file_launch_arg(value: &str) -> Option<String> {
     }
 
     let normalized = if let Some(file_url) = trimmed.strip_prefix("file://") {
+        // 仅 Windows 分支会重新赋值去掉前导斜杠，其他平台下不需要可变。
+        #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
         let mut path = file_url;
 
         #[cfg(target_os = "windows")]

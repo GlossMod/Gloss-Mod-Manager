@@ -81,6 +81,11 @@ const lang = {
             unknownTime: "Неизвестная дата",
             unknownSize: "Неизвестный размер",
             searchMods: "Поиск модов",
+            pageTitle: "Обзор модов",
+            pageSubtitle: "Просматривайте и скачивайте моды со всех платформ",
+            translationSettings: "Настройки перевода",
+            translationNeedsAi: "Сначала настройте ИИ, чтобы использовать перевод.",
+            providerTabs: "Платформы модов",
         },
         actions: {
             ...enUS.explore.actions,
@@ -97,6 +102,7 @@ const lang = {
             openSource: "Открыть источник",
             previousPage: "Назад",
             nextPage: "Далее",
+            jumpPage: "Перейти",
         },
         filters: {
             ...enUS.explore.filters,

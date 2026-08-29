@@ -1,4 +1,5 @@
-import { fetch as httpFetch } from "@tauri-apps/plugin-http";
+// 统一走带超时与重试的封装，避免对端无响应时请求永久挂起。
+import { requestWithRetry as httpFetch } from "@/lib/http-client";
 
 export type ThirdPartyProvider =
     | "NexusMods"

@@ -10,6 +10,7 @@ import {
     installPendingAppUpdate,
 } from "@/lib/app-updater";
 import { PersistentStore } from "@/lib/persistent-store";
+import { SecretStore } from "@/lib/secret-store";
 import router from "@/routes";
 
 //#region 全局托盘相关逻辑
@@ -40,6 +41,15 @@ async function prepareQuitApplication() {
     if (tray) {
         await tray.close();
         tray = null;
+    }
+
+    try {
+        // AI API Key 等凭据写入加密存储前有防抖，退出前必须强制落盘，
+        // 否则用户刚填完就退出会导致下次打开又是空的。
+        await SecretStore.flushAll();
+    } catch (error) {
+        console.error("退出前落盘加密凭据失败");
+        console.error(error);
     }
 
     try {

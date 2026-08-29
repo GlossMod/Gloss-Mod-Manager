@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus-message";
 import {
+    ArrowDown,
+    ArrowUp,
     Bot,
     BrainCircuit,
     CheckCircle2,
@@ -14,7 +16,6 @@ import {
     Pencil,
     Plus,
     RefreshCcw,
-    Send,
     Sparkles,
     Square,
     Trash2,
@@ -96,25 +97,26 @@ const skillList = getBundledAiChatSkills();
 
 const draft = ref("");
 const pendingFiles = ref<IAiChatPendingFile[]>([]);
-const chatCard = ref<HTMLElement | ComponentPublicInstance | null>(null);
 const imageInput = ref<HTMLInputElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const messagesViewport = ref<HTMLElement | null>(null);
+const composerTextarea = ref<HTMLTextAreaElement | ComponentPublicInstance | null>(
+    null,
+);
 const modelPickerOpen = ref(false);
 const modelSearchKeyword = ref("");
-const composerHeight = ref(220);
-const resizingComposer = ref(false);
 const showToolsDialog = ref(false);
 const showSkillsDialog = ref(false);
+const showScrollToBottom = ref(false);
 const editingMessageId = ref("");
 const editingText = ref("");
 const modelNameCollator = new Intl.Collator("zh-CN", {
     numeric: true,
     sensitivity: "base",
 });
-const minComposerHeight = 180;
-const minMessagesHeight = 240;
-let activeResizePointerId = 0;
+// 输入框随内容自增长的上下限，超出上限后内部滚动，避免挤压消息区。
+const minComposerRows = 2;
+const maxComposerHeight = 240;
 
 const isGenerating = computed(() => {
     return status.value === "submitted" || status.value === "streaming";
@@ -172,10 +174,12 @@ const selectedModelLabel = computed(() => {
     return resolveModelLabel(modelId) || "切换模型";
 });
 
-const composerStyle = computed(() => {
-    return {
-        height: `${composerHeight.value}px`,
-    };
+const sendButtonDisabled = computed(() => {
+    if (!hasConfiguration.value) {
+        return true;
+    }
+
+    return !isGenerating.value && !canSend.value;
 });
 
 const activeConversation = computed(() => {
@@ -209,8 +213,6 @@ const localServerStatusMeta = computed(() => {
 });
 
 onMounted(async () => {
-    window.addEventListener("resize", syncComposerHeightWithinBounds);
-
     try {
         if (!initialized.value) {
             await store.initialize();
@@ -231,13 +233,8 @@ onMounted(async () => {
         ElMessage.error(getErrorMessage(error, "初始化 AI 对话失败。"));
     } finally {
         await scrollToBottom();
-        syncComposerHeightWithinBounds();
+        syncComposerAutoHeight();
     }
-});
-
-onUnmounted(() => {
-    stopComposerResize();
-    window.removeEventListener("resize", syncComposerHeightWithinBounds);
 });
 
 watch(
@@ -253,7 +250,58 @@ watch(modelPickerOpen, (open) => {
     }
 });
 
-async function scrollToBottom() {
+// 草稿变化后重新计算输入框高度，让它跟随内容自然增高。
+watch(draft, () => {
+    void nextTick(syncComposerAutoHeight);
+});
+
+function getComposerTextareaElement() {
+    const textareaRef = composerTextarea.value;
+
+    if (!textareaRef) {
+        return null;
+    }
+
+    if (textareaRef instanceof HTMLTextAreaElement) {
+        return textareaRef;
+    }
+
+    return "$el" in textareaRef && textareaRef.$el instanceof HTMLTextAreaElement
+        ? textareaRef.$el
+        : null;
+}
+
+function syncComposerAutoHeight() {
+    const textarea = getComposerTextareaElement();
+
+    if (!textarea) {
+        return;
+    }
+
+    // 先归零再取 scrollHeight，否则收缩时读到的是上一次的高度。
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxComposerHeight)}px`;
+    textarea.style.overflowY =
+        textarea.scrollHeight > maxComposerHeight ? "auto" : "hidden";
+}
+
+function isViewportNearBottom(viewport: HTMLElement) {
+    return (
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 48
+    );
+}
+
+function handleMessagesScroll() {
+    const viewport = messagesViewport.value;
+
+    if (!viewport) {
+        return;
+    }
+
+    showScrollToBottom.value = !isViewportNearBottom(viewport);
+}
+
+async function scrollToBottom(force = false) {
     await nextTick();
     const viewport = messagesViewport.value;
 
@@ -261,103 +309,13 @@ async function scrollToBottom() {
         return;
     }
 
+    // 用户主动往上翻看历史时不强行拉回底部，避免流式输出打断阅读。
+    if (!force && showScrollToBottom.value) {
+        return;
+    }
+
     viewport.scrollTop = viewport.scrollHeight;
-}
-
-function getChatCardElement() {
-    const cardRef = chatCard.value;
-
-    if (!cardRef) {
-        return null;
-    }
-
-    if (cardRef instanceof HTMLElement) {
-        return cardRef;
-    }
-
-    return "$el" in cardRef && cardRef.$el instanceof HTMLElement
-        ? cardRef.$el
-        : null;
-}
-
-function getComposerHeightBounds() {
-    const cardElement = getChatCardElement();
-
-    if (!cardElement) {
-        return {
-            min: minComposerHeight,
-            max: minComposerHeight,
-        };
-    }
-
-    const cardRect = cardElement.getBoundingClientRect();
-
-    return {
-        min: minComposerHeight,
-        max: Math.max(minComposerHeight, cardRect.height - minMessagesHeight),
-    };
-}
-
-function clampComposerHeight(nextHeight: number) {
-    const bounds = getComposerHeightBounds();
-
-    return Math.min(Math.max(nextHeight, bounds.min), bounds.max);
-}
-
-function syncComposerHeightWithinBounds() {
-    composerHeight.value = clampComposerHeight(composerHeight.value);
-}
-
-function updateComposerHeight(clientY: number) {
-    const cardElement = getChatCardElement();
-
-    if (!cardElement) {
-        return;
-    }
-
-    const cardRect = cardElement.getBoundingClientRect();
-    composerHeight.value = clampComposerHeight(cardRect.bottom - clientY);
-}
-
-function handleComposerResizeMove(event: PointerEvent) {
-    if (!resizingComposer.value || event.pointerId !== activeResizePointerId) {
-        return;
-    }
-
-    updateComposerHeight(event.clientY);
-}
-
-function stopComposerResize(event?: PointerEvent) {
-    if (event && event.pointerId !== activeResizePointerId) {
-        return;
-    }
-
-    resizingComposer.value = false;
-    activeResizePointerId = 0;
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-    window.removeEventListener("pointermove", handleComposerResizeMove);
-    window.removeEventListener("pointerup", stopComposerResize);
-    window.removeEventListener("pointercancel", stopComposerResize);
-}
-
-function startComposerResize(event: PointerEvent) {
-    if (event.button !== 0) {
-        return;
-    }
-
-    event.preventDefault();
-    activeResizePointerId = event.pointerId;
-    resizingComposer.value = true;
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "ns-resize";
-
-    // 直接根据光标位置回推输入区高度，让拖拽过程稳定且直观。
-    updateComposerHeight(event.clientY);
-
-    window.addEventListener("pointermove", handleComposerResizeMove);
-    window.addEventListener("pointerup", stopComposerResize);
-    window.addEventListener("pointercancel", stopComposerResize);
+    showScrollToBottom.value = false;
 }
 
 function escapeHtml(value: string) {
@@ -370,7 +328,8 @@ function escapeHtml(value: string) {
 }
 
 function renderMarkdown(text: string) {
-    return markdown.render(text);
+    // 模型输出同样不可信（可被工具返回的外部内容间接注入），渲染前统一净化。
+    return sanitizeHtml(markdown.render(text));
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
@@ -493,10 +452,6 @@ function getMessagePlainText(message: IAiChatUIMessage) {
     return getMessageMarkdown(message);
 }
 
-function getMessageFiles(message: IAiChatUIMessage) {
-    return message.parts.filter(isFilePart);
-}
-
 function resolveModelLabel(modelId?: string) {
     if (!modelId) {
         return "";
@@ -509,23 +464,35 @@ function resolveModelLabel(modelId?: string) {
     return matchedModel?.name || modelId;
 }
 
-function getMessageSessionModelLabel(message: IAiChatUIMessage) {
-    // 优先展示消息自身记录的模型，其次回退到当前会话保存的模型。
-    const modelId =
-        message.metadata?.modelId ||
-        activeConversation.value?.modelId ||
-        selectedModelId.value.trim() ||
-        undefined;
+function getReasoningLabel(message: IAiChatUIMessage) {
+    const reasoningMs = message.metadata?.reasoningMs;
 
-    return resolveModelLabel(modelId);
+    // 流式过程中还没拿到耗时，先显示进行中的文案。
+    if (!reasoningMs) {
+        return isGenerating.value ? "思考中…" : "已思考";
+    }
+
+    const seconds = Math.max(1, Math.round(reasoningMs / 1000));
+
+    if (seconds < 60) {
+        return `已思考（用时 ${seconds} 秒）`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+
+    return remainingSeconds
+        ? `已思考（用时 ${minutes} 分 ${remainingSeconds} 秒）`
+        : `已思考（用时 ${minutes} 分）`;
 }
 
 function getMessageBubbleClass(message: IAiChatUIMessage) {
+    // 参考 Codex：用户消息是右侧气泡，助手回复直接铺在背景上，去掉卡片边框。
     return cn(
-        "group max-w-[86%] rounded-2xl border px-4 py-3 shadow-sm transition-colors",
+        "group min-w-0",
         message.role === "user"
-            ? "bg-primary/10 border-primary/20"
-            : "bg-card border-border/70",
+            ? "max-w-[75%] rounded-2xl bg-muted/60 px-4 py-2.5 text-foreground"
+            : "w-full max-w-full",
     );
 }
 
@@ -770,7 +737,7 @@ async function submitDraft() {
 
         draft.value = "";
         pendingFiles.value = [];
-        await scrollToBottom();
+        await scrollToBottom(true);
     } catch (error: unknown) {
         console.error("发送消息失败");
         console.error(error);
@@ -843,34 +810,42 @@ async function stopLocalServer() {
 </script>
 
 <template>
-    <div class="flex h-[calc(100vh-3rem)] min-h-0 flex-col gap-4">
-        <Card class="border-border/70 shadow-sm">
-            <CardHeader
-                class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
-            >
-                <div class="space-y-2">
-                    <CardTitle class="flex items-center gap-2">
-                        <Bot class="h-5 w-5" />
-                        <span>AI对话</span>
-                    </CardTitle>
-                    <CardDescription class="flex flex-wrap items-center gap-2">
-                        <Button
-                            variant="secondary"
-                            :disabled="busy || isGenerating"
-                            @click="createNewConversation"
-                        >
-                            <Plus class="h-4 w-4" />
-                            新的会话
-                        </Button>
+    <div class="flex h-[calc(100vh-3rem)] min-h-0 flex-col">
+        <header
+            class="flex shrink-0 items-center justify-between gap-3 pb-3"
+        >
+            <div class="flex min-w-0 items-center gap-2">
+                <Bot class="h-5 w-5 shrink-0 text-muted-foreground" />
+                <h1 class="truncate text-base font-medium">
+                    {{ activeConversation?.title || "AI对话" }}
+                </h1>
+            </div>
 
-                        <DropdownMenu>
-                            <DropdownMenuTrigger as-child>
-                                <Button variant="outline">
-                                    <History class="h-4 w-4" />
-                                    历史会话
-                                    <ChevronDown class="h-4 w-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
+            <div class="flex shrink-0 items-center gap-1">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="新的会话"
+                    aria-label="新的会话"
+                    :disabled="busy || isGenerating"
+                    @click="createNewConversation"
+                >
+                    <Plus class="h-4 w-4" />
+                </Button>
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title="历史会话"
+                            aria-label="历史会话"
+                        >
+                            <History class="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
                             <DropdownMenuContent class="w-80">
                                 <DropdownMenuLabel>历史会话</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
@@ -934,57 +909,59 @@ async function stopLocalServer() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <Button
-                            variant="outline"
-                            :disabled="loadingModels"
-                            @click="refreshModels"
-                        >
-                            <RefreshCcw
-                                :class="
-                                    cn(
-                                        'h-4 w-4',
-                                        loadingModels && 'animate-spin',
-                                    )
-                                "
-                            />
-                            刷新模型
-                        </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="刷新模型"
+                    aria-label="刷新模型"
+                    :disabled="loadingModels"
+                    @click="refreshModels"
+                >
+                    <RefreshCcw
+                        :class="
+                            cn('h-4 w-4', loadingModels && 'animate-spin')
+                        "
+                    />
+                </Button>
 
-                        <Button
-                            variant="outline"
-                            @click="showToolsDialog = true"
-                        >
-                            <Wrench class="h-4 w-4" />
-                            启用工具
-                        </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="启用工具"
+                    aria-label="启用工具"
+                    @click="showToolsDialog = true"
+                >
+                    <Wrench class="h-4 w-4" />
+                </Button>
 
-                        <Button
-                            variant="outline"
-                            @click="showSkillsDialog = true"
-                        >
-                            <Sparkles class="h-4 w-4" />
-                            skills
-                        </Button>
-                    </CardDescription>
-                </div>
-            </CardHeader>
-        </Card>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="Skills"
+                    aria-label="Skills"
+                    @click="showSkillsDialog = true"
+                >
+                    <Sparkles class="h-4 w-4" />
+                </Button>
+            </div>
+        </header>
 
-        <Card
-            ref="chatCard"
-            class="flex min-h-0 flex-1 flex-col border-border/70 shadow-sm"
-        >
+        <div class="relative flex min-h-0 flex-1 flex-col">
             <div
                 ref="messagesViewport"
-                class="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 p-4"
+                class="min-h-0 flex-1 space-y-6 overflow-y-auto px-1 pb-4"
+                @scroll.passive="handleMessagesScroll"
             >
                 <div
                     v-if="messages.length === 0"
                     class="flex h-full items-center justify-center"
                 >
-                    <div class="max-w-lg rounded-2xl p-6 text-center shadow-sm">
-                        <Bot class="mx-auto h-10 w-10 text-primary" />
-                        <h2 class="mt-4 text-lg font-semibold">
+                    <div class="max-w-lg p-6 text-center">
+                        <Bot class="mx-auto h-10 w-10 text-muted-foreground" />
+                        <h2 class="mt-4 text-lg font-medium">
                             开始一次 AI 对话
                         </h2>
                         <p class="mt-2 text-sm leading-6 text-muted-foreground">
@@ -1011,33 +988,14 @@ async function stopLocalServer() {
                     :key="message.id"
                     :class="
                         cn(
-                            'flex gap-3',
+                            'flex',
                             message.role === 'user'
                                 ? 'justify-end'
                                 : 'justify-start',
                         )
                     "
                 >
-                    <div
-                        v-if="message.role !== 'user'"
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm"
-                    >
-                        <Bot class="h-4 w-4 text-primary" />
-                    </div>
-
                     <div :class="getMessageBubbleClass(message)">
-                        <div class="mb-2 flex flex-wrap items-center gap-2">
-                            <Badge
-                                :variant="
-                                    message.role === 'user'
-                                        ? 'secondary'
-                                        : 'outline'
-                                "
-                            >
-                                {{ message.role === "user" ? "你" : "AI" }}
-                            </Badge>
-                        </div>
-
                         <div
                             v-if="editingMessageId === message.id"
                             class="space-y-3"
@@ -1079,25 +1037,28 @@ async function stopLocalServer() {
                                     v-else-if="isReasoningPart(part)"
                                     type="single"
                                     collapsible
-                                    class="rounded-xl border bg-muted/35 px-3"
                                 >
                                     <AccordionItem
                                         :value="`reasoning-${message.id}-${index}`"
                                         class="border-0"
                                     >
-                                        <AccordionTrigger class="py-2 text-sm">
+                                        <AccordionTrigger
+                                            class="justify-start gap-1.5 py-1 text-sm font-medium text-muted-foreground hover:no-underline [&>svg]:ml-0"
+                                        >
                                             <span
-                                                class="flex items-center gap-2"
+                                                class="flex items-center gap-1.5"
                                             >
                                                 <BrainCircuit
                                                     class="h-4 w-4 text-primary"
                                                 />
-                                                深度思考
+                                                {{
+                                                    getReasoningLabel(message)
+                                                }}
                                             </span>
                                         </AccordionTrigger>
                                         <AccordionContent>
                                             <div
-                                                class="ai-markdown pb-3 text-muted-foreground"
+                                                class="ai-markdown border-l-2 border-border/60 pl-4 text-sm leading-7 text-muted-foreground"
                                                 v-html="
                                                     renderMarkdown(
                                                         getPartText(part),
@@ -1108,228 +1069,165 @@ async function stopLocalServer() {
                                     </AccordionItem>
                                 </Accordion>
 
-                                <div
+                                <Accordion
                                     v-else-if="isToolPart(part)"
-                                    class="rounded-xl border border-dashed bg-muted/35 p-3"
+                                    type="single"
+                                    collapsible
                                 >
-                                    <div
-                                        class="flex flex-wrap items-center gap-2"
+                                    <AccordionItem
+                                        :value="`tool-${message.id}-${index}`"
+                                        class="border-0"
                                     >
-                                        <Badge variant="outline">
-                                            <Wrench class="h-3 w-3" />
-                                            工具调用
-                                        </Badge>
-                                        <span class="font-mono text-xs">
-                                            {{ getToolName(part) }}
-                                        </span>
-                                        <Badge variant="secondary">
-                                            {{ getToolState(part) }}
-                                        </Badge>
-                                    </div>
-
-                                    <Accordion
-                                        type="single"
-                                        collapsible
-                                        class="mt-2"
-                                    >
-                                        <AccordionItem
-                                            :value="`tool-${message.id}-${index}`"
+                                        <AccordionTrigger
+                                            class="justify-start gap-1.5 py-1 text-sm text-muted-foreground hover:no-underline [&>svg]:ml-0"
                                         >
-                                            <AccordionTrigger
-                                                class="py-2 text-sm"
+                                            <span
+                                                class="flex min-w-0 items-center gap-1.5"
                                             >
-                                                查看参数与结果
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                                <div
-                                                    class="grid gap-3 text-xs md:grid-cols-2"
-                                                >
-                                                    <div>
-                                                        <div
-                                                            class="mb-1 text-muted-foreground"
-                                                        >
-                                                            参数
-                                                        </div>
-                                                        <pre
-                                                            class="overflow-auto rounded-lg bg-background p-3"
-                                                            >{{
-                                                                formatJson(
-                                                                    getToolInput(
-                                                                        part,
-                                                                    ),
-                                                                )
-                                                            }}</pre
-                                                        >
+                                                <Wrench
+                                                    class="h-3.5 w-3.5 shrink-0"
+                                                />
+                                                <span class="truncate font-mono text-xs">
+                                                    {{ getToolName(part) }}
+                                                </span>
+                                                <span class="shrink-0 text-xs">
+                                                    {{ getToolState(part) }}
+                                                </span>
+                                            </span>
+                                        </AccordionTrigger>
+                                        <AccordionContent>
+                                            <div
+                                                class="space-y-2 border-l-2 border-border/60 pl-4 text-xs"
+                                            >
+                                                <div>
+                                                    <div
+                                                        class="mb-1 text-muted-foreground"
+                                                    >
+                                                        参数
                                                     </div>
-                                                    <div>
-                                                        <div
-                                                            class="mb-1 text-muted-foreground"
-                                                        >
-                                                            结果
-                                                        </div>
-                                                        <pre
-                                                            class="overflow-auto rounded-lg bg-background p-3"
-                                                            >{{
-                                                                formatJson(
-                                                                    getToolOutput(
-                                                                        part,
-                                                                    ),
-                                                                )
-                                                            }}</pre
-                                                        >
-                                                    </div>
+                                                    <pre
+                                                        class="overflow-auto rounded-lg bg-muted/40 p-2.5"
+                                                        >{{
+                                                            formatJson(
+                                                                getToolInput(
+                                                                    part,
+                                                                ),
+                                                            )
+                                                        }}</pre
+                                                    >
                                                 </div>
-                                            </AccordionContent>
-                                        </AccordionItem>
-                                    </Accordion>
-                                </div>
+                                                <div>
+                                                    <div
+                                                        class="mb-1 text-muted-foreground"
+                                                    >
+                                                        结果
+                                                    </div>
+                                                    <pre
+                                                        class="overflow-auto rounded-lg bg-muted/40 p-2.5"
+                                                        >{{
+                                                            formatJson(
+                                                                getToolOutput(
+                                                                    part,
+                                                                ),
+                                                            )
+                                                        }}</pre
+                                                    >
+                                                </div>
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                </Accordion>
 
-                                <div
-                                    v-else-if="isFilePart(part)"
-                                    class="rounded-xl border bg-muted/30 p-3"
-                                >
+                                <div v-else-if="isFilePart(part)">
                                     <img
                                         v-if="isImageFilePart(part)"
                                         :src="part.url"
                                         :alt="part.filename || 'image'"
-                                        class="max-h-72 rounded-lg border object-contain"
+                                        class="max-h-72 rounded-xl object-contain"
                                     />
                                     <div
-                                        class="mt-2 flex items-center gap-2 text-sm"
+                                        v-else
+                                        class="flex items-center gap-1.5 text-xs text-muted-foreground"
                                     >
-                                        <Paperclip
-                                            class="h-4 w-4 text-muted-foreground"
-                                        />
+                                        <Paperclip class="h-3.5 w-3.5" />
                                         <span class="truncate">
                                             {{ part.filename || "附件" }}
                                         </span>
-                                        <Badge variant="outline">
-                                            {{ part.mediaType }}
-                                        </Badge>
                                     </div>
                                 </div>
                             </template>
 
                             <div
-                                v-if="getMessageFiles(message).length > 0"
-                                class="flex flex-wrap gap-2 pt-1"
+                                :class="
+                                    cn(
+                                        'flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+                                        message.role === 'user' &&
+                                            'justify-end',
+                                    )
+                                "
                             >
-                                <Badge
-                                    v-for="file in getMessageFiles(message)"
-                                    :key="file.url"
-                                    variant="secondary"
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                    title="复制"
+                                    aria-label="复制"
+                                    @click="copyMessage(message)"
                                 >
-                                    <Paperclip class="h-3 w-3" />
-                                    {{ file.filename || "附件" }}
-                                </Badge>
-                            </div>
-
-                            <div
-                                class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3"
-                            >
-                                <div
-                                    class="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                                    <Copy class="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                    v-if="message.role === 'user'"
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                    title="编辑"
+                                    aria-label="编辑"
+                                    :disabled="isGenerating"
+                                    @click="startEditMessage(message)"
                                 >
-                                    <span v-if="message.metadata?.createdAt">
-                                        {{
-                                            formatTime(
-                                                message.metadata?.createdAt,
-                                            )
-                                        }}
-                                    </span>
-                                    <span v-if="message.metadata?.totalTokens">
-                                        {{ message.metadata.totalTokens }}
-                                        tokens
-                                    </span>
-                                    <template
-                                        v-if="
-                                            message.role !== 'user' &&
-                                            getMessageSessionModelLabel(message)
-                                        "
-                                    >
-                                        <span>本次会话模型</span>
-                                        <span
-                                            class="max-w-full rounded-full border bg-muted/35 px-2 py-1 text-foreground"
-                                        >
-                                            {{
-                                                getMessageSessionModelLabel(
-                                                    message,
-                                                )
-                                            }}
-                                        </span>
-                                    </template>
-                                </div>
-
-                                <div
-                                    :class="
-                                        cn(
-                                            'flex flex-wrap items-center gap-1',
-                                            message.role === 'user' &&
-                                                'ml-auto',
-                                        )
-                                    "
+                                    <Pencil class="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                    v-else
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                    title="重试"
+                                    aria-label="重试"
+                                    :disabled="isGenerating"
+                                    @click="regenerateMessage(message.id)"
                                 >
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        class="h-8 px-2 text-xs"
-                                        @click="copyMessage(message)"
-                                    >
-                                        <Copy class="h-3.5 w-3.5" />
-                                        复制
-                                    </Button>
-                                    <Button
-                                        v-if="message.role === 'user'"
-                                        variant="ghost"
-                                        size="sm"
-                                        class="h-8 px-2 text-xs"
-                                        :disabled="isGenerating"
-                                        @click="startEditMessage(message)"
-                                    >
-                                        <Pencil class="h-3.5 w-3.5" />
-                                        编辑
-                                    </Button>
-                                    <Button
-                                        v-else
-                                        variant="ghost"
-                                        size="sm"
-                                        class="h-8 px-2 text-xs"
-                                        :disabled="isGenerating"
-                                        @click="regenerateMessage(message.id)"
-                                    >
-                                        <RefreshCcw class="h-3.5 w-3.5" />
-                                        重试
-                                    </Button>
-                                </div>
+                                    <RefreshCcw class="h-3.5 w-3.5" />
+                                </Button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div
-                role="separator"
-                aria-label="调整输入区高度"
-                aria-orientation="horizontal"
-                class="group relative shrink-0 cursor-row-resize py-2 touch-none"
-                :class="resizingComposer ? 'bg-muted/20' : 'hover:bg-muted/10'"
-                @pointerdown="startComposerResize"
+            <!-- 回到底部悬浮按钮，参考 Codex 放在输入框上方居中 -->
+            <Transition
+                enter-active-class="transition-opacity duration-150"
+                enter-from-class="opacity-0"
+                leave-active-class="transition-opacity duration-150"
+                leave-to-class="opacity-0"
             >
-                <Separator class="pointer-events-none" />
-                <div
-                    class="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center"
+                <Button
+                    v-if="showScrollToBottom"
+                    variant="outline"
+                    size="icon"
+                    class="absolute bottom-2 left-1/2 z-10 h-9 w-9 -translate-x-1/2 rounded-full bg-background/90 shadow-md backdrop-blur"
+                    title="回到底部"
+                    aria-label="回到底部"
+                    @click="scrollToBottom(true)"
                 >
-                    <div
-                        class="h-1.5 w-16 rounded-full bg-border/80 transition-colors group-hover:bg-primary/60"
-                        :class="resizingComposer ? 'bg-primary/70' : ''"
-                    ></div>
-                </div>
-            </div>
+                    <ArrowDown class="h-4 w-4" />
+                </Button>
+            </Transition>
 
-            <div class="min-h-0 shrink-0" :style="composerStyle">
-                <div
-                    class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-4"
-                >
+            <div class="shrink-0 pt-1">
+                <div class="flex flex-col gap-2">
                     <div
                         v-if="visibleErrorMessage"
                         class="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive md:flex-row md:items-center md:justify-between"
@@ -1384,19 +1282,21 @@ async function stopLocalServer() {
                         文本类附件会读取内容；图片和二进制文件会以附件说明形式随消息发送。
                     </p>
 
-                    <InputGroup class="min-h-0 flex-1 overflow-hidden">
-                        <InputGroupTextarea
+                    <div
+                        class="rounded-2xl border border-border/70 bg-card/60 px-3 py-2.5 transition-colors focus-within:border-border"
+                    >
+                        <textarea
+                            ref="composerTextarea"
                             v-model="draft"
-                            class="h-full min-h-5 overflow-y-auto"
-                            placeholder="输入消息，支持 Markdown。Ctrl + Enter 发送。"
+                            :rows="minComposerRows"
+                            class="w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                            placeholder="随心输入，Ctrl + Enter 发送"
                             :disabled="!hasConfiguration"
                             @keydown="handleComposerKeydown"
-                        />
-                        <InputGroupAddon
-                            data-align="block-end"
-                            class="flex w-full flex-wrap items-center justify-between gap-2 border-t px-3 py-2"
-                        >
-                            <div class="flex flex-wrap items-center gap-1">
+                        ></textarea>
+
+                        <div class="mt-1 flex items-center justify-between gap-2">
+                            <div class="flex min-w-0 items-center gap-1">
                                 <input
                                     ref="imageInput"
                                     type="file"
@@ -1414,34 +1314,39 @@ async function stopLocalServer() {
                                 />
                                 <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="icon"
+                                    class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                    title="添加图片"
+                                    aria-label="添加图片"
                                     :disabled="!hasConfiguration"
                                     @click="triggerImageUpload"
                                 >
                                     <ImagePlus class="h-4 w-4" />
-                                    图片
                                 </Button>
                                 <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="icon"
+                                    class="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                    title="添加文件"
+                                    aria-label="添加文件"
                                     :disabled="!hasConfiguration"
                                     @click="triggerFileUpload"
                                 >
                                     <FileUp class="h-4 w-4" />
-                                    文件
                                 </Button>
                                 <Popover v-model:open="modelPickerOpen">
                                     <PopoverTrigger as-child>
                                         <Button
-                                            variant="outline"
-                                            class="h-8 w-56 justify-between px-3"
+                                            variant="ghost"
+                                            size="sm"
+                                            class="h-8 max-w-56 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
                                             :disabled="!hasConfiguration"
                                         >
-                                            <span class="truncate text-left">
+                                            <span class="truncate">
                                                 {{ selectedModelLabel }}
                                             </span>
                                             <ChevronDown
-                                                class="h-4 w-4 shrink-0"
+                                                class="h-3.5 w-3.5 shrink-0"
                                             />
                                         </Button>
                                     </PopoverTrigger>
@@ -1523,27 +1428,25 @@ async function stopLocalServer() {
                             </div>
 
                             <Button
-                                :variant="
-                                    isGenerating ? 'secondary' : 'default'
-                                "
-                                :disabled="
-                                    !hasConfiguration ||
-                                    (!isGenerating && !canSend)
-                                "
+                                size="icon"
+                                class="h-8 w-8 shrink-0 rounded-full"
+                                :variant="isGenerating ? 'secondary' : 'default'"
+                                :title="isGenerating ? '停止生成' : '发送'"
+                                :aria-label="isGenerating ? '停止生成' : '发送'"
+                                :disabled="sendButtonDisabled"
                                 @click="submitDraft"
                             >
-                                <LoaderCircle
+                                <Square
                                     v-if="isGenerating"
-                                    class="h-4 w-4 animate-spin"
+                                    class="h-3 w-3 fill-current"
                                 />
-                                <Send v-else class="h-4 w-4" />
-                                {{ isGenerating ? "停止" : "发送" }}
+                                <ArrowUp v-else class="h-4 w-4" />
                             </Button>
-                        </InputGroupAddon>
-                    </InputGroup>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </Card>
+        </div>
 
         <Dialog v-model:open="showToolsDialog" modal>
             <DialogScrollContent class="sm:max-w-5xl">

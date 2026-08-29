@@ -11,6 +11,7 @@ use std::time::Duration;
 use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::State;
+use uuid::Uuid;
 
 const MCP_EVENT_NAME: &str = "mcp-http-request";
 const MCP_STATUS_EVENT_NAME: &str = "mcp-server-status-changed";
@@ -34,6 +35,8 @@ pub enum McpServerStatus {
 pub struct McpServerSnapshot {
     pub status: McpServerStatus,
     pub port: Option<u16>,
+    #[serde(rename = "authToken")]
+    pub auth_token: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -52,11 +55,13 @@ struct ParsedHttpRequest {
     method: String,
     path: String,
     body: String,
+    headers: HashMap<String, String>,
 }
 
 pub struct McpRuntimeState {
     status: Mutex<McpServerStatus>,
     port: Mutex<Option<u16>>,
+    auth_token: Mutex<Option<String>>,
     pending_requests: Mutex<HashMap<String, mpsc::Sender<PendingHttpResponse>>>,
     shutdown_sender: Mutex<Option<mpsc::Sender<()>>>,
     worker: Mutex<Option<JoinHandle<()>>>,
@@ -68,6 +73,7 @@ impl Default for McpRuntimeState {
         Self {
             status: Mutex::new(McpServerStatus::Stopped),
             port: Mutex::new(None),
+            auth_token: Mutex::new(None),
             pending_requests: Mutex::new(HashMap::new()),
             shutdown_sender: Mutex::new(None),
             worker: Mutex::new(None),
@@ -81,6 +87,7 @@ impl McpRuntimeState {
         Ok(McpServerSnapshot {
             status: *lock(&self.status)?,
             port: *lock(&self.port)?,
+            auth_token: lock(&self.auth_token)?.clone(),
         })
     }
 
@@ -92,6 +99,15 @@ impl McpRuntimeState {
     fn set_port(&self, port: Option<u16>) -> Result<(), String> {
         *lock(&self.port)? = port;
         Ok(())
+    }
+
+    fn set_auth_token(&self, token: Option<String>) -> Result<(), String> {
+        *lock(&self.auth_token)? = token;
+        Ok(())
+    }
+
+    fn auth_token(&self) -> Result<Option<String>, String> {
+        Ok(lock(&self.auth_token)?.clone())
     }
 
     fn set_shutdown_sender(&self, sender: Option<mpsc::Sender<()>>) -> Result<(), String> {
@@ -175,12 +191,19 @@ pub fn mcp_start_server(
     state.set_status(McpServerStatus::Starting)?;
     state.set_port(Some(port))?;
 
+    // 服务仅监听回环地址，但本机其他进程与浏览器页面仍可访问，
+    // 因此每次启动生成一次性令牌，要求调用方携带 Authorization 头。
+    let auth_token = Uuid::new_v4().simple().to_string();
+    state.set_auth_token(Some(auth_token))?;
+
     let listener = TcpListener::bind((MCP_DEFAULT_HOST, port)).map_err(|error| {
         let _ = state.set_status(McpServerStatus::Stopped);
+        let _ = state.set_auth_token(None);
         format!("启动 MCP 服务失败：{error}")
     })?;
     listener.set_nonblocking(true).map_err(|error| {
         let _ = state.set_status(McpServerStatus::Stopped);
+        let _ = state.set_auth_token(None);
         format!("配置 MCP 服务监听器失败：{error}")
     })?;
 
@@ -227,6 +250,8 @@ pub fn mcp_stop_server(
     }
 
     state.set_status(McpServerStatus::Stopped)?;
+    state.set_auth_token(None)?;
+    state.set_port(None)?;
     emit_status_changed(&app, state.inner());
     state.snapshot()
 }
@@ -298,16 +323,42 @@ fn handle_connection(
     let request = match read_http_request(&mut stream) {
         Ok(request) => request,
         Err(error) => {
+            // 请求行都没解析成功，无法判断来源，不回显 CORS 头。
             return write_json_response(
                 &mut stream,
                 400,
                 Some(json!({ "error": error }).to_string()),
+                None,
             );
         }
     };
 
+    // 浏览器页面会自动带上 Origin。应用自身窗口（含开发服务器）需要放行，
+    // 其余来源一律拒绘，阻断恶意网页借 DNS rebinding 向本地端口发起的跳站请求。
+    // 不带 Origin 的请求来自编辑器/CLI 等原生 MCP 客户端，由令牌校验兜底。
+    let request_origin = request
+        .headers
+        .get("origin")
+        .map(|origin| origin.trim())
+        .filter(|origin| !origin.is_empty());
+
+    if let Some(origin) = request_origin {
+        if !is_allowed_origin(origin) {
+            return write_response(
+                &mut stream,
+                403,
+                Some(json!({ "error": "不允许来自浏览器跳站的 MCP 请求。" }).to_string()),
+                None,
+            );
+        }
+    }
+
+    // 通过校验的来源需要在响应里回显，否则浏览器会因缺少
+    // Access-Control-Allow-Origin 而拦截响应（预检表现为 204 却报 CORS 失败）。
+    let allowed_origin = request_origin;
+
     if request.method.eq_ignore_ascii_case("OPTIONS") {
-        return write_empty_response(&mut stream, 204);
+        return write_empty_response(&mut stream, 204, allowed_origin);
     }
 
     if request.path != "/mcp" {
@@ -315,7 +366,13 @@ fn handle_connection(
             &mut stream,
             404,
             Some(json!({ "error": "未找到 MCP 路径。" }).to_string()),
+            allowed_origin,
         );
+    }
+
+    // 除 OPTIONS 预检外的所有请求都必须通过令牌校验。
+    if !is_authorized(&request, &state)? {
+        return write_unauthorized_response(&mut stream, allowed_origin);
     }
 
     if request.method.eq_ignore_ascii_case("GET") {
@@ -330,7 +387,7 @@ fn handle_connection(
         })
         .to_string();
 
-        return write_json_response(&mut stream, 200, Some(body));
+        return write_json_response(&mut stream, 200, Some(body), allowed_origin);
     }
 
     if !request.method.eq_ignore_ascii_case("POST") {
@@ -338,6 +395,7 @@ fn handle_connection(
             &mut stream,
             405,
             Some(json!({ "error": "仅支持 GET、POST 和 OPTIONS 请求。" }).to_string()),
+            allowed_origin,
         );
     }
 
@@ -364,17 +422,24 @@ fn handle_connection(
                 })
                 .to_string(),
             ),
+            allowed_origin,
         );
     }
 
     match response_receiver.recv_timeout(REQUEST_TIMEOUT) {
-        Ok(response) => write_json_response(&mut stream, response.status_code, response.body),
+        Ok(response) => write_json_response(
+            &mut stream,
+            response.status_code,
+            response.body,
+            allowed_origin,
+        ),
         Err(mpsc::RecvTimeoutError::Timeout) => {
             let _ = state.take_pending_request(&request_id);
             write_json_response(
                 &mut stream,
                 504,
                 Some(json!({ "error": "等待前端处理 MCP 请求超时。" }).to_string()),
+                allowed_origin,
             )
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -383,9 +448,112 @@ fn handle_connection(
                 &mut stream,
                 500,
                 Some(json!({ "error": "前端 MCP 响应通道已断开。" }).to_string()),
+                allowed_origin,
             )
         }
     }
+}
+
+/// 判断浏览器来源是否为应用自身窗口。
+///
+/// 生产环境 WebView 的来源随平台不同：macOS/Linux 是 `tauri://localhost`，
+/// Windows 是 `http(s)://tauri.localhost`；开发环境则是 devUrl 指向的本地端口。
+/// 其余来源（包括任意网页）都会被拒绘，因此本机端口不会被外部站点跳站利用。
+fn is_allowed_origin(origin: &str) -> bool {
+    const ALLOWED_ORIGINS: [&str; 4] = [
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "asset://localhost",
+    ];
+
+    if ALLOWED_ORIGINS
+        .iter()
+        .any(|allowed| origin.eq_ignore_ascii_case(allowed))
+    {
+        return true;
+    }
+
+    // 开发环境的 devUrl 使用回环地址加任意端口，仅在 debug 构建里放行，
+    // 避免正式版把本机任意端口的页面也当成可信来源。
+    #[cfg(debug_assertions)]
+    {
+        if let Some(host) = origin
+            .strip_prefix("http://")
+            .or_else(|| origin.strip_prefix("https://"))
+        {
+            let hostname = host.split(':').next().unwrap_or_default();
+
+            return matches!(hostname, "localhost" | "127.0.0.1" | "[::1]");
+        }
+    }
+
+    false
+}
+
+/// 恒定时间比较，避免通过响应耗时逐字节猜测令牌。
+fn constant_time_eq(left: &str, right: &str) -> bool {
+    let left_bytes = left.as_bytes();
+    let right_bytes = right.as_bytes();
+
+    if left_bytes.len() != right_bytes.len() {
+        return false;
+    }
+
+    let mut difference = 0_u8;
+    for index in 0..left_bytes.len() {
+        difference |= left_bytes[index] ^ right_bytes[index];
+    }
+
+    difference == 0
+}
+
+/// 从 Authorization（Bearer）或 x-gmm-mcp-token 头中提取并校验令牌。
+fn is_authorized(
+    request: &ParsedHttpRequest,
+    state: &Arc<McpRuntimeState>,
+) -> Result<bool, String> {
+    let Some(expected_token) = state.auth_token()? else {
+        // 未生成令牌说明服务未就绪，一律拒绘。
+        return Ok(false);
+    };
+
+    let presented_token = request
+        .headers
+        .get("authorization")
+        .and_then(|value| {
+            let trimmed = value.trim();
+            trimmed
+                .strip_prefix("Bearer ")
+                .or_else(|| trimmed.strip_prefix("bearer "))
+                .map(|token| token.trim().to_string())
+        })
+        .or_else(|| {
+            request
+                .headers
+                .get("x-gmm-mcp-token")
+                .map(|value| value.trim().to_string())
+        });
+
+    let Some(presented_token) = presented_token else {
+        return Ok(false);
+    };
+
+    Ok(constant_time_eq(&presented_token, &expected_token))
+}
+
+fn write_unauthorized_response(
+    stream: &mut TcpStream,
+    allowed_origin: Option<&str>,
+) -> Result<(), String> {
+    write_json_response(
+        stream,
+        401,
+        Some(
+            json!({ "error": "MCP 请求未通过鉴权，请携带正确的访问令牌。" }).to_string(),
+        ),
+        allowed_origin,
+    )
 }
 
 fn read_http_request(stream: &mut TcpStream) -> Result<ParsedHttpRequest, String> {
@@ -466,7 +634,12 @@ fn read_http_request(stream: &mut TcpStream) -> Result<ParsedHttpRequest, String
     let body = String::from_utf8(body_bytes.to_vec())
         .map_err(|error| format!("HTTP 请求体不是有效的 UTF-8：{error}"))?;
 
-    Ok(ParsedHttpRequest { method, path, body })
+    Ok(ParsedHttpRequest {
+        method,
+        path,
+        body,
+        headers,
+    })
 }
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
@@ -476,30 +649,37 @@ fn find_header_end(buffer: &[u8]) -> Option<usize> {
         .map(|index| index + 4)
 }
 
-fn write_empty_response(stream: &mut TcpStream, status_code: u16) -> Result<(), String> {
-    write_response(stream, status_code, None)
+fn write_empty_response(
+    stream: &mut TcpStream,
+    status_code: u16,
+    allowed_origin: Option<&str>,
+) -> Result<(), String> {
+    write_response(stream, status_code, None, allowed_origin)
 }
 
 fn write_json_response(
     stream: &mut TcpStream,
     status_code: u16,
     body: Option<String>,
+    allowed_origin: Option<&str>,
 ) -> Result<(), String> {
-    write_response(stream, status_code, body)
+    write_response(stream, status_code, body, allowed_origin)
 }
 
 fn write_response(
     stream: &mut TcpStream,
     status_code: u16,
     body: Option<String>,
+    allowed_origin: Option<&str>,
 ) -> Result<(), String> {
     let body_string = body.unwrap_or_default();
     let mut response = format!(
         "HTTP/1.1 {} {}\r\n\
-Access-Control-Allow-Origin: *\r\n\
-Access-Control-Allow-Headers: content-type, accept, authorization, mcp-protocol-version, mcp-session-id, last-event-id\r\n\
+Vary: Origin\r\n\
+Access-Control-Allow-Headers: content-type, accept, authorization, user-agent, x-gmm-mcp-token, mcp-protocol-version, mcp-session-id, last-event-id\r\n\
 Access-Control-Expose-Headers: content-type, mcp-session-id, www-authenticate\r\n\
 Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n\
+Access-Control-Max-Age: 600\r\n\
 Cache-Control: no-store\r\n\
 Connection: close\r\n\
 Content-Length: {}\r\n",
@@ -508,8 +688,18 @@ Content-Length: {}\r\n",
         body_string.as_bytes().len(),
     );
 
+    // 只回显已通过 is_allowed_origin 校验的来源，不使用通配符：
+    // 通配符会让任意网页都能读到响应内容。
+    if let Some(origin) = allowed_origin {
+        response.push_str(&format!("Access-Control-Allow-Origin: {origin}\r\n"));
+    }
+
     if status_code != 204 {
         response.push_str("Content-Type: application/json; charset=utf-8\r\n");
+    }
+
+    if status_code == 401 {
+        response.push_str("WWW-Authenticate: Bearer realm=\"gloss-mod-manager\"\r\n");
     }
 
     response.push_str("\r\n");
@@ -534,6 +724,8 @@ fn status_text(status_code: u16) -> &'static str {
         200 => "OK",
         204 => "No Content",
         400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
         500 => "Internal Server Error",
@@ -553,4 +745,108 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<MutexGuard<'_, T>, String> {
     mutex
         .lock()
         .map_err(|_| "MCP 服务内部状态锁定失败。".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allows_production_webview_origins() {
+        assert!(is_allowed_origin("tauri://localhost"));
+        assert!(is_allowed_origin("http://tauri.localhost"));
+        assert!(is_allowed_origin("https://tauri.localhost"));
+    }
+
+    #[test]
+    fn origin_match_is_case_insensitive() {
+        assert!(is_allowed_origin("TAURI://LOCALHOST"));
+    }
+
+    #[test]
+    fn rejects_remote_origins() {
+        assert!(!is_allowed_origin("https://evil.example"));
+        assert!(!is_allowed_origin("http://mod.3dmgame.com"));
+        // 借子域名伪装成受信来源的情况也必须拒绘。
+        assert!(!is_allowed_origin("https://tauri.localhost.evil.example"));
+        assert!(!is_allowed_origin("https://eviltauri.localhost"));
+    }
+
+    #[test]
+    fn rejects_non_loopback_hosts() {
+        assert!(!is_allowed_origin("http://192.168.1.10:1420"));
+        assert!(!is_allowed_origin("http://example.com:1420"));
+    }
+
+    /// 开发构建需要放行 devUrl，正式构建不应把本机任意端口的页面当成可信来源。
+    #[test]
+    #[cfg(debug_assertions)]
+    fn allows_dev_server_origin_in_debug_builds() {
+        assert!(is_allowed_origin("http://localhost:1420"));
+        assert!(is_allowed_origin("http://127.0.0.1:1420"));
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn rejects_dev_server_origin_in_release_builds() {
+        assert!(!is_allowed_origin("http://localhost:1420"));
+        assert!(!is_allowed_origin("http://127.0.0.1:1420"));
+    }
+
+    #[test]
+    fn constant_time_eq_compares_contents() {
+        assert!(constant_time_eq("abc123", "abc123"));
+        assert!(!constant_time_eq("abc123", "abc124"));
+        assert!(!constant_time_eq("abc", "abc123"));
+        assert!(!constant_time_eq("", "abc"));
+    }
+
+    /// 在真实回环连接上跑一次 write_response，校验落到线上的响应头。
+    fn capture_response(status_code: u16, allowed_origin: Option<&str>) -> String {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("绑定测试端口失败");
+        let port = listener.local_addr().expect("读取测试端口失败").port();
+        let origin = allowed_origin.map(|value| value.to_string());
+
+        let writer = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("接受测试连接失败");
+            write_response(&mut stream, status_code, None, origin.as_deref())
+                .expect("写入测试响应失败");
+        });
+
+        let mut client = TcpStream::connect(("127.0.0.1", port)).expect("连接测试端口失败");
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("读取测试响应失败");
+        writer.join().expect("测试写入线程异常退出");
+
+        response
+    }
+
+    #[test]
+    fn preflight_response_echoes_allowed_origin() {
+        let response = capture_response(204, Some("http://localhost:1420"));
+
+        assert!(response.starts_with("HTTP/1.1 204 No Content\r\n"));
+        assert!(response.contains("Access-Control-Allow-Origin: http://localhost:1420\r\n"));
+        assert!(response.contains("Vary: Origin\r\n"));
+        // 204 不能带 Content-Type，否则部分客户端会尝试解析空响应体。
+        assert!(!response.contains("Content-Type:"));
+    }
+
+    #[test]
+    fn response_omits_cors_origin_when_not_allowed() {
+        let response = capture_response(403, None);
+
+        assert!(!response.contains("Access-Control-Allow-Origin"));
+    }
+
+    /// 通配符会让任意网页都能读到本地 MCP 响应，必须始终回显具体来源。
+    #[test]
+    fn response_never_uses_wildcard_origin() {
+        let response = capture_response(200, Some("tauri://localhost"));
+
+        assert!(response.contains("Access-Control-Allow-Origin: tauri://localhost\r\n"));
+        assert!(!response.contains("Access-Control-Allow-Origin: *"));
+    }
 }

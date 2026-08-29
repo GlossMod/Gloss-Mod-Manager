@@ -189,11 +189,27 @@ export class PersistentStore {
         console.error(error);
     }
 
+    /**
+     * 调试面板会直接展示这些值，凭据类字段必须脱敏后再输出。
+     */
+    private static readonly sensitiveKeyPattern =
+        /(key|token|secret|password|credential)/iu;
+
     public static async getAllKeys() {
         const allkeys = await PersistentStore.store.keys();
         const data = [];
         for (const key of allkeys) {
             const value = await PersistentStore.get(key, null);
+
+            if (
+                PersistentStore.sensitiveKeyPattern.test(key) &&
+                typeof value === "string" &&
+                value
+            ) {
+                data.push({ key, value: "******" });
+                continue;
+            }
+
             data.push({ key, value });
         }
         return data;

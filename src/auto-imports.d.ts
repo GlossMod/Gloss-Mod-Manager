@@ -34,6 +34,7 @@ declare global {
   const SIDECAR_BASE_NAMES: typeof import('./lib/native-tools-manifest').SIDECAR_BASE_NAMES
   const SIDECAR_COMMANDS: typeof import('./lib/native-tools-manifest').SIDECAR_COMMANDS
   const ScanGame: typeof import('./lib/scan-game').ScanGame
+  const SecretStore: typeof import('./lib/secret-store').SecretStore
   const SevenZip: typeof import('./lib/sevenZip').SevenZip
   const Sidecar: typeof import('./lib/sidecar').Sidecar
   const SidecarExecutionError: typeof import('./lib/sidecar').SidecarExecutionError
@@ -53,9 +54,11 @@ declare global {
   const buildAria2RpcServerArgs: typeof import('./lib/aria2').buildAria2RpcServerArgs
   const buildBundledAiChatSkillsPrompt: typeof import('./lib/ai-chat-skills').buildBundledAiChatSkillsPrompt
   const buildGlossOutputFileName: typeof import('./lib/gloss-download-queue').buildGlossOutputFileName
+  const buildMcpToolDriftWarnings: typeof import('./lib/mcp-tool-drift').buildMcpToolDriftWarnings
   const buildUniqueGlossFileName: typeof import('./lib/gloss-download').buildUniqueGlossFileName
   const checkForAppUpdates: typeof import('./lib/app-updater').checkForAppUpdates
   const checkGlossModUpdates: typeof import('./lib/gloss-mod-api').checkGlossModUpdates
+  const checkMcpToolDrift: typeof import('./lib/mcp-tool-drift').checkMcpToolDrift
   const clearManagerInternalDrag: typeof import('./lib/manager-internal-drag').clearManagerInternalDrag
   const cloneDefinition: typeof import('./lib/custom-definition-utils').cloneDefinition
   const cn: typeof import('./lib/utils').cn
@@ -92,6 +95,7 @@ declare global {
   const downloadWithAria2: typeof import('./lib/aria2').downloadWithAria2
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
+  const escapeHtmlText: typeof import('./lib/html-sanitizer').escapeHtmlText
   const executeAria2Sidecar: typeof import('./lib/sidecar').executeAria2Sidecar
   const executeSevenZipSidecar: typeof import('./lib/sidecar').executeSevenZipSidecar
   const executeSidecar: typeof import('./lib/sidecar').executeSidecar
@@ -116,9 +120,11 @@ declare global {
   const getExploreTranslationErrorMessage: typeof import('./lib/explore-ai-translation').getExploreTranslationErrorMessage
   const getGlossModPresence: typeof import('./lib/gloss-download').getGlossModPresence
   const getThirdPartyProviderLabel: typeof import('./lib/third-party-mod-api').getThirdPartyProviderLabel
+  const getUrlFileName: typeof import('./lib/file-name-utils').getUrlFileName
   const h: typeof import('vue').h
   const hasExternalFilePayload: typeof import('./lib/browser-drop-import').hasExternalFilePayload
   const hasGlossMultipleResources: typeof import('./lib/download-file-selection').hasGlossMultipleResources
+  const hasMcpToolDrift: typeof import('./lib/mcp-tool-drift').hasMcpToolDrift
   const hasPendingAppUpdateInstall: typeof import('./lib/app-updater').hasPendingAppUpdateInstall
   const hasThirdPartyMultipleFiles: typeof import('./lib/download-file-selection').hasThirdPartyMultipleFiles
   const hydrateManagerRuntimeData: typeof import('./lib/manager-runtime-data').hydrateManagerRuntimeData
@@ -217,6 +223,7 @@ declare global {
   const refWithControl: typeof import('@vueuse/core').refWithControl
   const removeAria2TaskSnapshot: typeof import('./lib/aria2-task-cache').removeAria2TaskSnapshot
   const removeAria2TaskSnapshots: typeof import('./lib/aria2-task-cache').removeAria2TaskSnapshots
+  const requestWithRetry: typeof import('./lib/http-client').requestWithRetry
   const resolveAiChatAttachmentMediaType: typeof import('./lib/ai-chat-attachments').resolveAiChatAttachmentMediaType
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveGlossAssetUrl: typeof import('./lib/gloss-mod-api').resolveGlossAssetUrl
@@ -225,7 +232,10 @@ declare global {
   const resolveLocalModImportSourceType: typeof import('./lib/local-mod-import').resolveLocalModImportSourceType
   const resolveRef: typeof import('@vueuse/core').resolveRef
   const resolveThirdPartyDownloadUrl: typeof import('./lib/third-party-mod-api').resolveThirdPartyDownloadUrl
+  const resolveUnref: typeof import('@vueuse/core').resolveUnref
   const runAria2Command: typeof import('./lib/aria2').runAria2Command
+  const sanitizeFileName: typeof import('./lib/file-name-utils').sanitizeFileName
+  const sanitizeHtml: typeof import('./lib/html-sanitizer').sanitizeHtml
   const saveLegacyCustomGameDefinition: typeof import('./lib/legacy-custom-data').saveLegacyCustomGameDefinition
   const saveLegacyCustomTypeDefinition: typeof import('./lib/legacy-custom-data').saveLegacyCustomTypeDefinition
   const setActivePinia: typeof import('pinia').setActivePinia
@@ -531,6 +541,9 @@ declare global {
   export type { IGmmPackageDetails, IInstallGmmPackageOptions } from './lib/gmm-package'
   import('./lib/gmm-package')
   // @ts-ignore
+  export type { IRequestOptions } from './lib/http-client'
+  import('./lib/http-client')
+  // @ts-ignore
   export type { Language } from './lib/language'
   import('./lib/language')
   // @ts-ignore
@@ -540,6 +553,9 @@ declare global {
   export type { Log, ILogFileItem } from './lib/log'
   import('./lib/log')
   // @ts-ignore
+  export type { McpToolFingerprintMap, IMcpToolDriftResult } from './lib/mcp-tool-drift'
+  import('./lib/mcp-tool-drift')
+  // @ts-ignore
   export type { NativeToolsManifest, EmbeddedToolName, EmbeddedSidecarCommand } from './lib/native-tools-manifest'
   import('./lib/native-tools-manifest')
   // @ts-ignore
@@ -548,6 +564,9 @@ declare global {
   // @ts-ignore
   export type { ScanGame } from './lib/scan-game'
   import('./lib/scan-game')
+  // @ts-ignore
+  export type { SecretStore } from './lib/secret-store'
+  import('./lib/secret-store')
   // @ts-ignore
   export type { SevenZip, SevenZipOverwriteMode, SevenZipArchiveFormat, SevenZipExtractOptions, SevenZipCreateOptions, SevenZipListOptions, SevenZipTestOptions, SevenZipArchiveEntry, SevenZipListResult } from './lib/sevenZip'
   import('./lib/sevenZip')

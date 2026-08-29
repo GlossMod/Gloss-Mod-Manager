@@ -14,19 +14,13 @@ const GLOSS_MOD_KEY = (import.meta.env.GLOSS_MOD_KEY ?? "").trim();
 const EMPTY_POSTER =
     "data:image/svg+xml;charset=UTF-8," +
     encodeURIComponent(`
-		<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
-			<defs>
-				<linearGradient id="detail-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-					<stop offset="0%" stop-color="#1d1814" />
-					<stop offset="55%" stop-color="#87521e" />
-					<stop offset="100%" stop-color="#f5cf92" />
-				</linearGradient>
-			</defs>
-			<rect width="960" height="540" rx="32" fill="url(#detail-gradient)" />
-			<circle cx="170" cy="110" r="110" fill="rgba(255,255,255,0.10)" />
-			<circle cx="820" cy="410" r="130" fill="rgba(255,255,255,0.08)" />
-			<text x="64" y="300" fill="#fff5df" font-size="52" font-family="Arial, sans-serif">Gloss Mod Detail</text>
-			<text x="64" y="350" fill="#ffe0a3" font-size="26" font-family="Arial, sans-serif">暂无可用封面</text>
+		<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600">
+			<rect width="960" height="600" fill="#e7e7e7" />
+			<g fill="none" stroke="#b4b4b4" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="396" y="240" width="168" height="132" rx="14" />
+				<path d="M396 333l45-39 39 33 45-42 39 33" />
+			</g>
+			<circle cx="450" cy="282" r="13" fill="#b4b4b4" />
 		</svg>
 	`);
 const numberFormatter = new Intl.NumberFormat("zh-CN");
@@ -56,7 +50,7 @@ const queueingResourceKey = ref("");
 let requestSequence = 0;
 
 const markdownParser = new MarkdownIt({
-    html: true,
+    html: false,
     breaks: true,
     linkify: true,
     typographer: true,
@@ -137,11 +131,14 @@ const renderedMarkdown = computed(() => {
 
     const rendered = markdownParser.render(markdownSource.value);
 
-    return rendered.replace(
+    const withAbsoluteUrls = rendered.replace(
         /(href|src)=(['"])(\/[^'"#][^'"]*)\2/giu,
         (_fullMatch, attribute, quote, value) =>
             `${attribute}=${quote}${GLOSS_MOD_WEB_BASE_URL}${value}${quote}`,
     );
+
+    // 详情正文来自远程接口，补全域名后再统一净化。
+    return sanitizeHtml(withAbsoluteUrls);
 });
 
 watch(
@@ -376,197 +373,179 @@ async function goBackToExplore() {
 </script>
 
 <template>
-    <div class="space-y-6">
-        <section
-            class="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-amber-100/70 via-background to-background"
+    <div class="mx-auto w-full max-w-[1400px] space-y-6">
+        <div class="flex items-center gap-2">
+            <Button variant="ghost" size="sm" @click="goBackToExplore">
+                <IconArrowLeft class="size-4" />
+                返回游览
+            </Button>
+        </div>
+
+        <div v-if="loading" class="space-y-6">
+            <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+                <div class="space-y-4">
+                    <div class="h-4 w-40 animate-pulse rounded bg-muted"></div>
+                    <div class="h-9 w-3/4 animate-pulse rounded bg-muted"></div>
+                    <div class="h-4 w-full animate-pulse rounded bg-muted"></div>
+                    <div class="h-4 w-4/5 animate-pulse rounded bg-muted"></div>
+                    <div class="flex gap-6 pt-2">
+                        <div
+                            v-for="item in 4"
+                            :key="item"
+                            class="h-12 w-20 animate-pulse rounded bg-muted"
+                        ></div>
+                    </div>
+                </div>
+                <div class="aspect-16/10 animate-pulse rounded-xl bg-muted"></div>
+            </div>
+        </div>
+
+        <div
+            v-else-if="errorMessage"
+            class="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-6"
+        >
+            <IconCircleAlert class="mt-0.5 size-5 shrink-0 text-destructive" />
+            <div class="space-y-1">
+                <div class="text-sm font-medium">加载失败</div>
+                <p class="text-sm text-muted-foreground">{{ errorMessage }}</p>
+            </div>
+        </div>
+
+        <div
+            v-else-if="!modDetail"
+            class="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center"
         >
             <div
-                class="grid gap-6 p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:p-6"
+                class="flex size-11 items-center justify-center rounded-full bg-muted"
             >
-                <div class="space-y-5">
-                    <div class="flex flex-wrap gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            @click="goBackToExplore"
+                <IconInbox class="size-5 text-muted-foreground" />
+            </div>
+            <p class="mt-4 text-sm text-muted-foreground">
+                当前没有可展示的 Mod 详情。
+            </p>
+        </div>
+
+        <template v-else>
+            <section
+                class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]"
+            >
+                <div class="flex flex-col gap-5">
+                    <div class="space-y-3">
+                        <div
+                            class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
                         >
-                            <IconArrowLeft />
-                            返回游览
-                        </Button>
-                        <Badge class="rounded-full" variant="secondary">
-                            Gloss Mod Detail
-                        </Badge>
-                        <Badge
-                            v-if="modDetail?.support_gmm"
-                            class="rounded-full"
-                            variant="outline"
+                            <span>{{ modDetail.game_name }}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{{ modDetail.mods_type_name || "未分类" }}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                                更新于 {{ formatDate(modDetail.mods_updateTime) }}
+                            </span>
+                            <Badge
+                                v-if="modDetail.support_gmm"
+                                variant="secondary"
+                                class="rounded-md font-normal"
+                            >
+                                支持 GMM
+                            </Badge>
+                        </div>
+
+                        <h1
+                            class="text-2xl leading-tight font-semibold tracking-tight lg:text-3xl"
                         >
-                            支持 GMM
-                        </Badge>
+                            {{ modDetail.mods_title }}
+                        </h1>
+
+                        <p
+                            v-if="modDetail.mods_desc"
+                            class="max-w-2xl text-sm leading-6 text-muted-foreground"
+                        >
+                            {{ modDetail.mods_desc }}
+                        </p>
                     </div>
 
-                    <div v-if="loading" class="space-y-3">
-                        <div
-                            class="h-10 w-2/3 animate-pulse rounded-xl bg-muted"
-                        ></div>
-                        <div
-                            class="h-5 w-full animate-pulse rounded bg-muted"
-                        ></div>
-                        <div
-                            class="h-5 w-4/5 animate-pulse rounded bg-muted"
-                        ></div>
-                        <div class="grid grid-cols-2 gap-3 pt-3 sm:grid-cols-4">
-                            <div
-                                v-for="item in 4"
-                                :key="item"
-                                class="h-18 animate-pulse rounded-2xl bg-muted"
-                            ></div>
+                    <dl class="flex flex-wrap gap-x-8 gap-y-3">
+                        <div class="space-y-0.5">
+                            <dt class="text-xs text-muted-foreground">下载</dt>
+                            <dd class="text-lg font-semibold tabular-nums">
+                                {{ formatNumber(modDetail.mods_download_cnt) }}
+                            </dd>
                         </div>
-                    </div>
-
-                    <div v-else-if="modDetail" class="space-y-5">
-                        <div class="space-y-3">
-                            <div
-                                class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
-                            >
-                                <span>{{ modDetail.game_name }}</span>
-                                <span>·</span>
-                                <span>{{
-                                    modDetail.mods_type_name || "未分类"
-                                }}</span>
-                                <span>·</span>
-                                <span
-                                    >更新于
-                                    {{
-                                        formatDate(modDetail.mods_updateTime)
-                                    }}</span
-                                >
-                            </div>
-                            <h1
-                                class="text-3xl font-semibold tracking-tight lg:text-4xl"
-                            >
-                                {{ modDetail.mods_title }}
-                            </h1>
-                            <p
-                                v-if="modDetail.mods_desc"
-                                class="max-w-3xl text-sm leading-7 text-muted-foreground lg:text-base"
-                            >
-                                {{ modDetail.mods_desc }}
-                            </p>
+                        <div class="space-y-0.5">
+                            <dt class="text-xs text-muted-foreground">浏览</dt>
+                            <dd class="text-lg font-semibold tabular-nums">
+                                {{ formatNumber(modDetail.mods_click_cnt) }}
+                            </dd>
                         </div>
-
-                        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <div
-                                class="rounded-2xl border bg-background/80 px-4 py-4 backdrop-blur-sm"
-                            >
-                                <div class="text-xs text-muted-foreground">
-                                    下载
-                                </div>
-                                <div class="mt-2 text-lg font-semibold">
-                                    {{
-                                        formatNumber(
-                                            modDetail.mods_download_cnt,
-                                        )
-                                    }}
-                                </div>
-                            </div>
-                            <div
-                                class="rounded-2xl border bg-background/80 px-4 py-4 backdrop-blur-sm"
-                            >
-                                <div class="text-xs text-muted-foreground">
-                                    浏览
-                                </div>
-                                <div class="mt-2 text-lg font-semibold">
-                                    {{ formatNumber(modDetail.mods_click_cnt) }}
-                                </div>
-                            </div>
-                            <div
-                                class="rounded-2xl border bg-background/80 px-4 py-4 backdrop-blur-sm"
-                            >
-                                <div class="text-xs text-muted-foreground">
-                                    收藏
-                                </div>
-                                <div class="mt-2 text-lg font-semibold">
-                                    {{ formatNumber(modDetail.mods_mark_cnt) }}
-                                </div>
-                            </div>
-                            <div
-                                class="rounded-2xl border bg-background/80 px-4 py-4 backdrop-blur-sm"
-                            >
-                                <div class="text-xs text-muted-foreground">
-                                    资源数
-                                </div>
-                                <div class="mt-2 text-lg font-semibold">
-                                    {{ modDetail.mods_resource.length }}
-                                </div>
-                            </div>
+                        <div class="space-y-0.5">
+                            <dt class="text-xs text-muted-foreground">收藏</dt>
+                            <dd class="text-lg font-semibold tabular-nums">
+                                {{ formatNumber(modDetail.mods_mark_cnt) }}
+                            </dd>
                         </div>
+                        <div class="space-y-0.5">
+                            <dt class="text-xs text-muted-foreground">资源数</dt>
+                            <dd class="text-lg font-semibold tabular-nums">
+                                {{ modDetail.mods_resource.length }}
+                            </dd>
+                        </div>
+                    </dl>
 
-                        <div class="flex flex-wrap gap-2">
-                            <Badge class="rounded-full" variant="outline">
-                                作者：{{
+                    <div
+                        class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+                    >
+                        <span>
+                            作者
+                            <span class="text-foreground">
+                                {{
                                     modDetail.user_nickName ||
                                     modDetail.mods_author ||
                                     "未知"
                                 }}
-                            </Badge>
-                            <Badge class="rounded-full" variant="outline">
-                                版本：{{
+                            </span>
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                            版本
+                            <span class="text-foreground">
+                                {{
                                     modDetail.mods_version ||
                                     latestResource?.mods_resource_version ||
                                     "未知"
                                 }}
-                            </Badge>
-                            <Badge class="rounded-full" variant="outline">
-                                发布时间：{{
-                                    formatDate(modDetail.mods_createTime)
-                                }}
-                            </Badge>
-                        </div>
-
-                        <div class="flex flex-wrap gap-3">
-                            <Button @click="openDownloadPage()">
-                                <IconPanelRightOpen />
-                                前往下载页
-                            </Button>
-                            <Button
-                                v-if="latestResource"
-                                variant="outline"
-                                :disabled="
-                                    !latestResource ||
-                                    isQueueingResource(latestResource)
-                                "
-                                @click="downloadResource(latestResource)"
-                            >
-                                <IconDownload />
-                                {{ getPrimaryDownloadButtonLabel() }}
-                            </Button>
-                        </div>
+                            </span>
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                            发布于
+                            <span class="text-foreground">
+                                {{ formatDate(modDetail.mods_createTime) }}
+                            </span>
+                        </span>
                     </div>
 
-                    <div
-                        v-else
-                        class="rounded-2xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground"
-                    >
-                        当前没有可展示的 Mod 详情。
-                    </div>
-
-                    <div
-                        v-if="errorMessage"
-                        class="rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-4 text-sm text-destructive"
-                    >
-                        {{ errorMessage }}
+                    <div class="mt-auto flex flex-wrap gap-2 pt-1">
+                        <Button
+                            v-if="latestResource"
+                            :disabled="isQueueingResource(latestResource)"
+                            @click="downloadResource(latestResource)"
+                        >
+                            <IconDownload class="size-4" />
+                            {{ getPrimaryDownloadButtonLabel() }}
+                        </Button>
+                        <Button variant="outline" @click="openDownloadPage()">
+                            <IconPanelRightOpen class="size-4" />
+                            前往下载页
+                        </Button>
                     </div>
                 </div>
 
-                <div class="space-y-4">
-                    <div
-                        class="overflow-hidden rounded-3xl border bg-muted/30 shadow-sm"
-                    >
+                <div class="space-y-3">
+                    <div class="overflow-hidden rounded-xl border bg-muted">
                         <img
                             :src="coverImages[0] || EMPTY_POSTER"
-                            :alt="modDetail?.mods_title || 'Gloss Mod Detail'"
-                            class="aspect-video w-full object-cover"
+                            :alt="modDetail.mods_title || 'Gloss Mod Detail'"
+                            class="aspect-16/10 w-full object-cover"
                             @error="
                                 (event) =>
                                     ((event.target as HTMLImageElement).src =
@@ -577,17 +556,18 @@ async function goBackToExplore() {
 
                     <div
                         v-if="coverImages.length > 1"
-                        class="grid grid-cols-3 gap-3 sm:grid-cols-4"
+                        class="grid grid-cols-4 gap-2"
                     >
                         <div
-                            v-for="(item, index) in coverImages.slice(1)"
+                            v-for="(item, index) in coverImages.slice(1, 9)"
                             :key="`${item}-${index}`"
-                            class="overflow-hidden rounded-2xl border bg-muted/30"
+                            class="overflow-hidden rounded-lg border bg-muted"
                         >
                             <img
                                 :src="item"
-                                :alt="`${modDetail?.mods_title || 'Gloss Mod'}-${index + 1}`"
-                                class="aspect-video w-full object-cover"
+                                :alt="`${modDetail.mods_title || 'Gloss Mod'}-${index + 1}`"
+                                loading="lazy"
+                                class="aspect-16/10 w-full object-cover"
                                 @error="
                                     (event) =>
                                         ((
@@ -598,190 +578,182 @@ async function goBackToExplore() {
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <section
-            v-if="modDetail"
-            class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_24rem]"
-        >
-            <Card class="overflow-hidden">
-                <CardHeader>
-                    <CardTitle>详细介绍</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <article
-                        class="markdown-body"
-                        v-html="renderedMarkdown"
-                    ></article>
-                </CardContent>
-            </Card>
+            <Separator />
 
-            <div class="space-y-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>资源列表</CardTitle>
-                        <CardDescription>
-                            可以直接跳转下载页，或一键加入最新资源的下载任务。
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent class="space-y-3">
-                        <div
-                            v-for="resource in modDetail.mods_resource"
-                            :key="resource.id"
-                            class="rounded-2xl border px-4 py-4"
-                        >
-                            <div class="flex flex-col gap-3">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <div class="text-sm font-medium">
+            <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                <div class="min-w-0 space-y-4">
+                    <h2 class="text-sm font-medium">详细介绍</h2>
+                    <article class="markdown-body" v-html="renderedMarkdown"></article>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="space-y-3">
+                        <div class="space-y-1">
+                            <h2 class="text-sm font-medium">资源列表</h2>
+                            <p class="text-xs leading-5 text-muted-foreground">
+                                可以直接跳转下载页，或一键加入最新资源的下载任务。
+                            </p>
+                        </div>
+
+                        <div class="divide-y rounded-xl border">
+                            <div
+                                v-for="resource in modDetail.mods_resource"
+                                :key="resource.id"
+                                class="space-y-2.5 p-4"
+                            >
+                                <div class="flex items-start gap-2">
+                                    <div
+                                        class="min-w-0 flex-1 text-sm font-medium"
+                                    >
                                         {{ resource.mods_resource_name }}
                                     </div>
                                     <Badge
-                                        v-if="
-                                            resource.mods_resource_latest_version
-                                        "
-                                        class="rounded-full"
+                                        v-if="resource.mods_resource_latest_version"
                                         variant="secondary"
+                                        class="shrink-0 rounded-md font-normal"
                                     >
                                         最新
                                     </Badge>
                                 </div>
+
                                 <div
-                                    class="flex flex-wrap gap-2 text-xs text-muted-foreground"
+                                    class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
                                 >
-                                    <span
-                                        >大小：{{
-                                            resource.mods_resource_size ||
-                                            "未知"
-                                        }}</span
-                                    >
-                                    <span>·</span>
-                                    <span
-                                        >版本：{{
+                                    <span>
+                                        {{
+                                            resource.mods_resource_size || "未知"
+                                        }}
+                                    </span>
+                                    <span aria-hidden="true">·</span>
+                                    <span>
+                                        {{
                                             resource.mods_resource_version ||
                                             modDetail.mods_version ||
                                             "未知"
-                                        }}</span
-                                    >
-                                    <span
+                                        }}
+                                    </span>
+                                    <template
                                         v-if="resource.mods_resource_createTime"
-                                        >·</span
                                     >
-                                    <span
-                                        v-if="resource.mods_resource_createTime"
-                                        >发布时间：{{
-                                            formatDate(
-                                                resource.mods_resource_createTime,
-                                            )
-                                        }}</span
-                                    >
+                                        <span aria-hidden="true">·</span>
+                                        <span>
+                                            {{
+                                                formatDate(
+                                                    resource.mods_resource_createTime,
+                                                )
+                                            }}
+                                        </span>
+                                    </template>
                                 </div>
+
                                 <p
                                     v-if="resource.mods_resource_desc"
-                                    class="text-sm leading-6 text-muted-foreground"
+                                    class="text-xs leading-5 text-muted-foreground"
                                 >
                                     {{ resource.mods_resource_desc }}
                                 </p>
-                                <div class="flex flex-wrap gap-2">
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        @click="openDownloadPage(resource)"
-                                    >
-                                        <IconPanelRightOpen />
-                                        打开下载页
-                                    </Button>
+
+                                <div class="flex flex-wrap gap-2 pt-0.5">
                                     <Button
                                         size="sm"
                                         :disabled="isQueueingResource(resource)"
                                         @click="downloadResource(resource)"
                                     >
-                                        <IconDownload />
+                                        <IconDownload class="size-4" />
                                         {{
                                             isQueueingResource(resource)
                                                 ? "加入中..."
                                                 : "立即下载"
                                         }}
                                     </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        @click="openDownloadPage(resource)"
+                                    >
+                                        <IconPanelRightOpen class="size-4" />
+                                        下载页
+                                    </Button>
                                 </div>
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>附加信息</CardTitle>
-                    </CardHeader>
-                    <CardContent
-                        class="space-y-3 text-sm text-muted-foreground"
-                    >
-                        <div class="flex items-start justify-between gap-4">
-                            <span>Mod ID</span>
-                            <span class="text-right text-foreground">{{
-                                modDetail.id
-                            }}</span>
-                        </div>
-                        <div class="flex items-start justify-between gap-4">
-                            <span>作者</span>
-                            <span class="text-right text-foreground">{{
-                                modDetail.user_nickName ||
-                                modDetail.mods_author ||
-                                "未知"
-                            }}</span>
-                        </div>
-                        <div class="flex items-start justify-between gap-4">
-                            <span>创建时间</span>
-                            <span class="text-right text-foreground">{{
-                                formatDate(modDetail.mods_createTime)
-                            }}</span>
-                        </div>
-                        <div class="flex items-start justify-between gap-4">
-                            <span>更新时间</span>
-                            <span class="text-right text-foreground">{{
-                                formatDate(modDetail.mods_updateTime)
-                            }}</span>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        </section>
+                    <div class="space-y-3">
+                        <h2 class="text-sm font-medium">附加信息</h2>
+                        <dl class="space-y-2.5 text-sm">
+                            <div class="flex items-start justify-between gap-4">
+                                <dt class="text-muted-foreground">Mod ID</dt>
+                                <dd class="text-right tabular-nums">
+                                    {{ modDetail.id }}
+                                </dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4">
+                                <dt class="text-muted-foreground">作者</dt>
+                                <dd class="text-right">
+                                    {{
+                                        modDetail.user_nickName ||
+                                        modDetail.mods_author ||
+                                        "未知"
+                                    }}
+                                </dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4">
+                                <dt class="text-muted-foreground">创建时间</dt>
+                                <dd class="text-right">
+                                    {{ formatDate(modDetail.mods_createTime) }}
+                                </dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4">
+                                <dt class="text-muted-foreground">更新时间</dt>
+                                <dd class="text-right">
+                                    {{ formatDate(modDetail.mods_updateTime) }}
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+            </section>
+        </template>
     </div>
 </template>
 
 <style scoped>
 .markdown-body {
-    color: hsl(var(--foreground));
-    font-size: 0.95rem;
-    line-height: 1.9;
+    color: var(--foreground);
+    font-size: 0.9rem;
+    line-height: 1.8;
 }
 
 .markdown-body :deep(.empty-markdown) {
     margin: 0;
-    color: hsl(var(--muted-foreground));
+    color: var(--muted-foreground);
 }
 
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
 .markdown-body :deep(h3),
 .markdown-body :deep(h4) {
-    margin-top: 1.75rem;
-    margin-bottom: 0.9rem;
-    font-weight: 700;
-    line-height: 1.35;
+    margin-top: 1.6rem;
+    margin-bottom: 0.8rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
     scroll-margin-top: 5rem;
 }
 
 .markdown-body :deep(h1) {
-    font-size: 1.8rem;
+    font-size: 1.4rem;
 }
 
 .markdown-body :deep(h2) {
-    font-size: 1.45rem;
+    font-size: 1.2rem;
 }
 
 .markdown-body :deep(h3) {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
 }
 
 .markdown-body :deep(p),
@@ -795,45 +767,45 @@ async function goBackToExplore() {
 
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
-    padding-left: 1.4rem;
+    padding-left: 1.3rem;
 }
 
 .markdown-body :deep(li + li) {
-    margin-top: 0.45rem;
+    margin-top: 0.35rem;
 }
 
 .markdown-body :deep(a) {
-    color: #9a5a12;
+    color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 0.2rem;
 }
 
 .markdown-body :deep(blockquote) {
-    border-left: 4px solid rgba(154, 90, 18, 0.35);
-    background: rgba(154, 90, 18, 0.07);
-    border-radius: 1rem;
-    padding: 0.95rem 1rem;
-    color: hsl(var(--muted-foreground));
+    margin-left: 0;
+    border-left: 2px solid var(--border);
+    padding: 0.1rem 0 0.1rem 1rem;
+    color: var(--muted-foreground);
 }
 
 .markdown-body :deep(code) {
-    border-radius: 0.45rem;
-    background: rgba(30, 41, 59, 0.08);
-    padding: 0.12rem 0.4rem;
-    font-size: 0.9em;
+    border-radius: 0.35rem;
+    background: var(--muted);
+    padding: 0.1rem 0.35rem;
+    font-size: 0.875em;
 }
 
 .markdown-body :deep(pre) {
     overflow-x: auto;
-    border-radius: 1rem;
-    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--muted);
     padding: 1rem;
-    color: #f8fafc;
 }
 
 .markdown-body :deep(pre code) {
     background: transparent;
     padding: 0;
+    font-size: 0.85rem;
     color: inherit;
 }
 
@@ -841,40 +813,37 @@ async function goBackToExplore() {
     width: 100%;
     border-collapse: collapse;
     overflow: hidden;
-    border-radius: 1rem;
-    border: 1px solid hsl(var(--border));
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
 }
 
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
-    border-bottom: 1px solid hsl(var(--border));
-    padding: 0.7rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    padding: 0.6rem 0.8rem;
     text-align: left;
 }
 
+.markdown-body :deep(tr:last-child td) {
+    border-bottom: none;
+}
+
 .markdown-body :deep(th) {
-    background: rgba(148, 163, 184, 0.12);
+    background: var(--muted);
     font-weight: 600;
+}
+
+.markdown-body :deep(hr) {
+    margin: 1.5rem 0;
+    border: none;
+    border-top: 1px solid var(--border);
 }
 
 .markdown-body :deep(img) {
     display: block;
     max-width: 100%;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     margin: 1rem 0;
-}
-
-@media (max-width: 768px) {
-    .markdown-body {
-        font-size: 0.92rem;
-    }
-
-    .markdown-body :deep(h1) {
-        font-size: 1.55rem;
-    }
-
-    .markdown-body :deep(h2) {
-        font-size: 1.3rem;
-    }
 }
 </style>

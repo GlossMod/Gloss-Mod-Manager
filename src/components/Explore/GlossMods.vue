@@ -38,19 +38,13 @@ const PAGE_SIZE_OPTIONS = ["12", "20", "36", "48"];
 const EMPTY_POSTER =
     "data:image/svg+xml;charset=UTF-8," +
     encodeURIComponent(`
-		<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
-			<defs>
-				<linearGradient id="gloss-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-					<stop offset="0%" stop-color="#231815" />
-					<stop offset="50%" stop-color="#8a4b08" />
-					<stop offset="100%" stop-color="#f1c27d" />
-				</linearGradient>
-			</defs>
-			<rect width="640" height="360" rx="24" fill="url(#gloss-gradient)" />
-			<circle cx="120" cy="90" r="72" fill="rgba(255,255,255,0.12)" />
-			<circle cx="540" cy="290" r="96" fill="rgba(255,255,255,0.08)" />
-			<text x="48" y="210" fill="#fff5df" font-size="42" font-family="Arial, sans-serif">Gloss Mod</text>
-			<text x="48" y="254" fill="#ffe0a3" font-size="22" font-family="Arial, sans-serif">暂无可用封面</text>
+		<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+			<rect width="640" height="400" fill="#e7e7e7" />
+			<g fill="none" stroke="#b4b4b4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="264" y="164" width="112" height="88" rx="10" />
+				<path d="M264 226l30-26 26 22 30-28 26 22" />
+			</g>
+			<circle cx="300" cy="192" r="9" fill="#b4b4b4" />
 		</svg>
 	`);
 interface IGlossModListData {
@@ -372,24 +366,6 @@ const paginationItems = computed<IPageItem[]>(() => {
 
     return items;
 });
-const summaryCards = computed(() => [
-    {
-        label: t("explore.summary.totalResults"),
-        value: formatNumber(totalCount.value),
-    },
-    {
-        label: t("explore.summary.currentPage"),
-        value: String(totalPages.value > 0 ? page.value : 0),
-    },
-    {
-        label: t("explore.summary.totalPages"),
-        value: String(totalPages.value),
-    },
-    {
-        label: t("explore.summary.tagConditions"),
-        value: String(parsedTags.value.length),
-    },
-]);
 const shouldPollTaskSnapshots = computed(() => {
     return Object.values(taskMetaMap.value).some((meta) => {
         return ["active", "waiting", "paused"].includes(meta.taskStatus ?? "");
@@ -427,6 +403,11 @@ watch(
     currentTypeOptions,
     (list) => {
         if (selectedType.value === "all") {
+            return;
+        }
+
+        // 类型列表还没加载出来时不要清空选择，否则会把 query 里恢复的 gType 冲掉。
+        if (glossGameTypeLoading.value || list.length === 0) {
             return;
         }
 
@@ -469,9 +450,14 @@ watchDebounced(
         onlySupportGmm.value,
         onlyLocal.value,
         followCurrentGame.value,
-        currentGameId.value,
     ],
-    () => {
+    (_values, previousValues) => {
+        // 首次触发只拉取数据，保留 query 里恢复出来的页码与筛选条件。
+        if (!previousValues) {
+            void fetchMods();
+            return;
+        }
+
         if (page.value !== 1) {
             page.value = 1;
             return;
@@ -485,6 +471,31 @@ watchDebounced(
         immediate: true,
     },
 );
+
+// 单独监听所管理的游戏本身，不用 currentGameId：后者混入了 followCurrentGame，
+// 切换「全部游戏」会同时触发上面的筛选 watch，造成重复请求。
+const managedGameId = computed(() => currentGame.value?.GlossGameId ?? null);
+
+// 持久化注水会把 managerGame 由 null 补成真实游戏，null -> 游戏 这一次变化
+// 不是用户切换游戏，不能重置页码，否则从详情页返回会跳回第一页。
+watch(managedGameId, (_gameId, previousGameId) => {
+    // 不跟随当前游戏时，游戏变化不影响列表结果，无需重新请求。
+    if (!followCurrentGame.value) {
+        return;
+    }
+
+    if (previousGameId === null) {
+        void fetchMods();
+        return;
+    }
+
+    if (page.value !== 1) {
+        page.value = 1;
+        return;
+    }
+
+    void fetchMods();
+});
 
 watch(page, () => {
     void fetchMods();
@@ -1401,17 +1412,6 @@ function getDisplayTags(item: IGlossExploreMod): ITranslatedBadgeText[] {
     }));
 }
 
-function getDisplayResourceName(item: IGlossExploreMod) {
-    const resourceName =
-        getLatestResource(item)?.mods_resource_name ||
-        t("explore.resources.noResourceName");
-
-    return getInlineTranslatedText(
-        resourceName,
-        getTranslation(item)?.resourceName,
-    );
-}
-
 function resetFilters() {
     searchKeyword.value = "";
     tagKeyword.value = "";
@@ -1521,157 +1521,145 @@ function jumpToPage() {
 
 <template>
     <div class="space-y-5">
-        <section class="overflow-hidden rounded-2xl border p-4">
-            <div
-                class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between"
-            >
-                <div class="space-y-3">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <Badge
-                            v-if="currentGameName"
-                            class="rounded-full"
-                            variant="outline"
-                        >
-                            {{
-                                t("explore.common.currentGame", {
-                                    game: currentGameName,
-                                })
-                            }}
-                        </Badge>
-                        <Badge v-else class="rounded-full" variant="outline">
-                            {{ t("explore.gloss.noLocalGameAllResults") }}
-                        </Badge>
-                        <Badge
-                            v-if="onlySupportGmm"
-                            class="rounded-full"
-                            variant="outline"
-                        >
-                            {{ t("explore.gloss.onlySupportGmm") }}
-                        </Badge>
-                        <Badge
-                            v-if="onlyLocal"
-                            class="rounded-full"
-                            variant="outline"
-                        >
-                            {{ t("explore.gloss.onlyLocal") }}
-                        </Badge>
-                    </div>
-                    <div>
-                        <h4 class="text-base font-semibold tracking-tight">
-                            3DM Mods
-                        </h4>
-                    </div>
-                    <div
-                        class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-                    >
-                        <span>
-                            {{
-                                totalPages > 0
-                                    ? t("explore.common.pageProgress", {
-                                          page,
-                                          total: totalPages,
-                                      })
-                                    : t("explore.common.noPaginationResult")
-                            }}
-                        </span>
-                        <span>·</span>
-                        <span>
-                            {{
-                                hasActiveFilters
-                                    ? t("explore.common.filtersActive")
-                                    : t("explore.common.filtersInactive")
-                            }}
-                        </span>
-                        <span v-if="loading">
-                            · {{ t("explore.common.updating") }}
-                        </span>
-                        <span v-if="translationLoading">
-                            · {{ t("explore.translation.translating") }}
-                        </span>
-                        <span v-else-if="translationErrorMessage">
-                            · {{ translationErrorMessage }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:min-w-105">
-                    <div
-                        v-for="item in summaryCards"
-                        :key="item.label"
-                        class="rounded-xl border border-border/60 bg-background/80 px-3 py-3 backdrop-blur-sm"
-                    >
-                        <div class="text-xs text-muted-foreground">
-                            {{ item.label }}
-                        </div>
-                        <div class="mt-1 text-lg font-semibold tracking-tight">
-                            {{ item.value }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="space-y-4 rounded-2xl border p-4">
+        <section class="space-y-3">
             <div
                 class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
             >
-                <div class="flex-1 flex gap-3 lg:max-w-2xl">
-                    <div class="relative w-full">
-                        <Input
-                            v-model="searchKeyword"
-                            class="pr-10"
-                            :placeholder="t('explore.gloss.searchPlaceholder')"
-                            @keydown.enter="fetchMods"
-                        />
-                        <IconSearch
-                            class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-                        />
-                    </div>
+                <div class="relative w-full lg:max-w-md">
+                    <IconSearch
+                        class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                        v-model="searchKeyword"
+                        class="h-10 pl-9"
+                        :placeholder="t('explore.gloss.searchPlaceholder')"
+                        @keydown.enter="fetchMods"
+                    />
                 </div>
+
                 <div class="flex flex-wrap items-center gap-2">
                     <Button
                         size="sm"
-                        variant="outline"
+                        :variant="isFiltersExpanded ? 'secondary' : 'outline'"
                         @click="isFiltersExpanded = !isFiltersExpanded"
                     >
-                        <IconListFilter />
+                        <IconListFilter class="size-4" />
                         {{
                             isFiltersExpanded
                                 ? t("explore.actions.collapseFilters")
                                 : t("explore.actions.expandFilters")
                         }}
                     </Button>
-                    <Button size="sm" variant="outline" @click="resetFilters">
-                        <IconFilterX />
+                    <Button
+                        v-if="hasActiveFilters"
+                        size="sm"
+                        variant="ghost"
+                        @click="resetFilters"
+                    >
+                        <IconFilterX class="size-4" />
                         {{ t("explore.actions.resetSearch") }}
                     </Button>
                 </div>
             </div>
 
-            <div v-show="isFiltersExpanded" class="space-y-3 pt-3 border-t">
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                    <div>
-                        <div class="text-sm font-medium">
+            <div
+                class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+            >
+                <span class="font-medium text-foreground">
+                    {{
+                        t("explore.common.totalResults", {
+                            count: formatNumber(totalCount),
+                        })
+                    }}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                    {{
+                        totalPages > 0
+                            ? t("explore.common.pageProgress", {
+                                  page,
+                                  total: totalPages,
+                              })
+                            : t("explore.common.noPaginationResult")
+                    }}
+                </span>
+                <template v-if="currentGameName">
+                    <span aria-hidden="true">·</span>
+                    <span>
+                        {{
+                            t("explore.common.currentGame", {
+                                game: currentGameName,
+                            })
+                        }}
+                    </span>
+                </template>
+                <template v-else>
+                    <span aria-hidden="true">·</span>
+                    <span>{{ t("explore.gloss.noLocalGameAllResults") }}</span>
+                </template>
+                <span
+                    v-if="loading"
+                    class="flex items-center gap-1.5 text-foreground"
+                >
+                    <IconLoaderCircle class="size-3 animate-spin" />
+                    {{ t("explore.common.updating") }}
+                </span>
+                <span
+                    v-if="translationLoading"
+                    class="flex items-center gap-1.5 text-foreground"
+                >
+                    <IconLoaderCircle class="size-3 animate-spin" />
+                    {{ t("explore.translation.translating") }}
+                </span>
+                <span v-else-if="translationErrorMessage" class="text-destructive">
+                    {{ translationErrorMessage }}
+                </span>
+            </div>
+
+            <div
+                v-if="onlySupportGmm || onlyLocal || parsedTags.length"
+                class="flex flex-wrap items-center gap-1.5"
+            >
+                <Badge v-if="onlySupportGmm" variant="secondary" class="rounded-full font-normal">
+                    {{ t("explore.gloss.onlySupportGmm") }}
+                </Badge>
+                <Badge v-if="onlyLocal" variant="secondary" class="rounded-full font-normal">
+                    {{ t("explore.gloss.onlyLocal") }}
+                </Badge>
+                <Badge
+                    v-for="tag in parsedTags"
+                    :key="tag"
+                    variant="secondary"
+                    class="rounded-full font-normal"
+                >
+                    {{ tag }}
+                </Badge>
+            </div>
+
+            <div
+                v-show="isFiltersExpanded"
+                class="space-y-4 rounded-xl border bg-muted/25 p-4"
+            >
+                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
                             {{ t("explore.filters.tag") }}
-                        </div>
+                        </Label>
                         <Input
                             v-model="tagKeyword"
-                            class="mt-2"
                             :placeholder="t('explore.filters.tagPlaceholder')"
                             @keydown.enter="fetchMods"
                         />
                     </div>
 
-                    <div>
-                        <div class="text-sm font-medium">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
                             {{ t("explore.filters.sourceType") }}
-                        </div>
+                        </Label>
                         <Select v-model="selectedOriginal">
-                            <SelectTrigger class="mt-2 w-full">
+                            <SelectTrigger class="w-full">
                                 <SelectValue
-                                    :placeholder="
-                                        t('explore.filters.allSources')
-                                    "
+                                    :placeholder="t('explore.filters.allSources')"
                                 />
                             </SelectTrigger>
                             <SelectContent>
@@ -1686,12 +1674,12 @@ function jumpToPage() {
                         </Select>
                     </div>
 
-                    <div>
-                        <div class="text-sm font-medium">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
                             {{ t("explore.filters.publishTime") }}
-                        </div>
+                        </Label>
                         <Select v-model="selectedTime">
-                            <SelectTrigger class="mt-2 w-full">
+                            <SelectTrigger class="w-full">
                                 <SelectValue
                                     :placeholder="t('explore.filters.allTime')"
                                 />
@@ -1708,18 +1696,16 @@ function jumpToPage() {
                         </Select>
                     </div>
 
-                    <div>
-                        <div class="text-sm font-medium">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
                             {{ t("explore.filters.gameType") }}
-                        </div>
+                        </Label>
                         <Select
                             v-model="selectedType"
                             :disabled="!currentTypeOptions.length"
                         >
-                            <SelectTrigger class="mt-2 w-full">
-                                <SelectValue
-                                    :placeholder="currentTypePlaceholder"
-                                />
+                            <SelectTrigger class="w-full">
+                                <SelectValue :placeholder="currentTypePlaceholder" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">
@@ -1736,12 +1722,34 @@ function jumpToPage() {
                         </Select>
                     </div>
 
-                    <div>
-                        <div class="text-sm font-medium">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
+                            {{ t("explore.filters.sort") }}
+                        </Label>
+                        <Select v-model="selectedSort">
+                            <SelectTrigger class="w-full">
+                                <SelectValue
+                                    :placeholder="t('explore.filters.chooseSort')"
+                                />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="item in sortOptions"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ item.label }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
                             {{ t("explore.filters.pageSize") }}
-                        </div>
+                        </Label>
                         <Select v-model="pageSize">
-                            <SelectTrigger class="mt-2 w-full">
+                            <SelectTrigger class="w-full">
                                 <SelectValue
                                     :placeholder="
                                         t('explore.filters.choosePageSize')
@@ -1763,68 +1771,46 @@ function jumpToPage() {
                             </SelectContent>
                         </Select>
                     </div>
-
-                    <div>
-                        <div class="text-sm font-medium">
-                            {{ t("explore.filters.sort") }}
-                        </div>
-                        <Select v-model="selectedSort">
-                            <SelectTrigger class="mt-2 w-full">
-                                <SelectValue
-                                    :placeholder="
-                                        t('explore.filters.chooseSort')
-                                    "
-                                />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem
-                                    v-for="item in sortOptions"
-                                    :key="item.value"
-                                    :value="item.value"
-                                >
-                                    {{ item.label }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
                 </div>
 
-                <div class="flex flex-wrap gap-4 pt-2">
+                <Separator />
+
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
                     <div class="flex items-center gap-2">
                         <Switch id="onlySupportGmm" v-model="onlySupportGmm" />
-                        <label
-                            for="onlySupportGmm"
-                            class="text-sm font-medium"
-                            >{{ t("explore.gloss.onlySupportGmm") }}</label
-                        >
+                        <Label for="onlySupportGmm" class="text-sm font-normal">
+                            {{ t("explore.gloss.onlySupportGmm") }}
+                        </Label>
                     </div>
                     <div class="flex items-center gap-2">
                         <Switch id="onlyLocal" v-model="onlyLocal" />
-                        <label for="onlyLocal" class="text-sm font-medium">{{
-                            t("explore.gloss.onlyLocal")
-                        }}</label>
+                        <Label for="onlyLocal" class="text-sm font-normal">
+                            {{ t("explore.gloss.onlyLocal") }}
+                        </Label>
                     </div>
                 </div>
             </div>
         </section>
-
         <section
             v-if="errorMessage"
-            class="rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-5"
+            class="rounded-xl border border-destructive/30 bg-destructive/5 p-6"
         >
             <div
-                class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
             >
-                <div>
-                    <div class="text-sm font-semibold text-destructive">
-                        {{ t("explore.common.loadFailed") }}
+                <div class="flex items-start gap-3">
+                    <IconCircleAlert class="mt-0.5 size-5 shrink-0 text-destructive" />
+                    <div class="space-y-1">
+                        <div class="text-sm font-medium">
+                            {{ t("explore.common.loadFailed") }}
+                        </div>
+                        <p class="text-sm text-muted-foreground">
+                            {{ errorMessage }}
+                        </p>
                     </div>
-                    <p class="mt-1 text-sm text-muted-foreground">
-                        {{ errorMessage }}
-                    </p>
                 </div>
-                <Button variant="outline" @click="fetchMods">
-                    <IconRefreshCcw />
+                <Button size="sm" variant="outline" @click="fetchMods">
+                    <IconRefreshCcw class="size-4" />
                     {{ t("explore.actions.retry") }}
                 </Button>
             </div>
@@ -1832,317 +1818,213 @@ function jumpToPage() {
 
         <section
             v-else-if="loading && !mods.length"
-            class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+            class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
         >
             <div
-                v-for="item in 6"
+                v-for="item in 8"
                 :key="item"
-                class="overflow-hidden rounded-2xl border bg-background"
+                class="overflow-hidden rounded-xl border"
             >
-                <div class="aspect-video animate-pulse bg-muted"></div>
+                <div class="aspect-16/10 animate-pulse bg-muted"></div>
                 <div class="space-y-3 p-4">
-                    <div class="h-5 w-2/3 animate-pulse rounded bg-muted"></div>
-                    <div
-                        class="h-4 w-full animate-pulse rounded bg-muted"
-                    ></div>
-                    <div class="h-4 w-5/6 animate-pulse rounded bg-muted"></div>
-                    <div class="grid grid-cols-3 gap-2">
-                        <div class="h-8 animate-pulse rounded bg-muted"></div>
-                        <div class="h-8 animate-pulse rounded bg-muted"></div>
-                        <div class="h-8 animate-pulse rounded bg-muted"></div>
-                    </div>
+                    <div class="h-4 w-3/4 animate-pulse rounded bg-muted"></div>
+                    <div class="h-3 w-1/2 animate-pulse rounded bg-muted"></div>
+                    <div class="h-8 w-full animate-pulse rounded bg-muted"></div>
                 </div>
             </div>
         </section>
 
         <section
             v-else-if="!mods.length"
-            class="rounded-2xl border border-dashed px-4 py-10 text-center"
+            class="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center"
         >
-            <div class="mx-auto max-w-md">
-                <div class="text-base font-semibold">
-                    {{ t("explore.empty.title") }}
-                </div>
-                <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    {{ t("explore.gloss.emptyDescription") }}
-                </p>
-                <div class="mt-5 flex justify-center">
-                    <Button variant="outline" @click="resetFilters">
-                        <IconFilterX />
-                        {{ t("explore.actions.clearFilters") }}
-                    </Button>
-                </div>
+            <div
+                class="flex size-11 items-center justify-center rounded-full bg-muted"
+            >
+                <IconSearchX class="size-5 text-muted-foreground" />
             </div>
+            <div class="mt-4 text-sm font-medium">
+                {{ t("explore.empty.title") }}
+            </div>
+            <p class="mt-1.5 max-w-sm text-sm leading-6 text-muted-foreground">
+                {{ t("explore.gloss.emptyDescription") }}
+            </p>
+            <Button size="sm" variant="outline" class="mt-5" @click="resetFilters">
+                <IconFilterX class="size-4" />
+                {{ t("explore.actions.clearFilters") }}
+            </Button>
         </section>
 
         <template v-else>
             <section
-                class="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
-            >
-                <div>
-                    <div class="text-sm font-medium">
-                        {{
-                            currentGameId
-                                ? t("explore.gloss.listTitleWithGame", {
-                                      game: currentGameName,
-                                  })
-                                : t("explore.gloss.allListTitle")
-                        }}
-                    </div>
-                    <div class="mt-1 text-xs text-muted-foreground">
-                        {{
-                            t("explore.common.totalResults", {
-                                count: formatNumber(totalCount),
-                            })
-                        }}
-                    </div>
-                </div>
-                <div
-                    class="flex items-center gap-2 text-xs text-muted-foreground"
-                >
-                    <IconLoaderCircle
-                        v-if="loading"
-                        class="size-4 animate-spin"
-                    />
-                    <span>{{
-                        totalPages > 0
-                            ? t("explore.common.pageProgress", {
-                                  page,
-                                  total: totalPages,
-                              })
-                            : t("explore.common.noPagination")
-                    }}</span>
-                </div>
-            </section>
-
-            <section
-                class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
+                class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
             >
                 <article
                     v-for="item in sortedMods"
                     :key="item.id"
-                    class="group overflow-hidden rounded-2xl border bg-card transition-colors hover:border-primary/40"
+                    class="group flex flex-col overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-md"
                 >
-                    <div class="relative aspect-video overflow-hidden bg-muted">
+                    <button
+                        type="button"
+                        class="relative block aspect-16/10 w-full cursor-pointer overflow-hidden bg-muted text-left"
+                        @click="openModDetail(item)"
+                    >
                         <img
                             :src="getCoverUrl(item)"
                             :data-fallback-src="getFallbackCoverUrl(item)"
                             :alt="getDisplayTitle(item)"
-                            class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                            loading="lazy"
+                            class="size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
                             @error="handleCoverError"
                         />
                         <div
-                            class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/20 to-transparent px-4 py-3 text-white"
+                            v-if="item.support_gmm || isCloudDriveMod(item)"
+                            class="absolute top-2 left-2 flex flex-wrap gap-1.5"
                         >
-                            <div
-                                class="flex flex-wrap items-center gap-2 text-xs"
+                            <span
+                                v-if="item.support_gmm"
+                                class="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[11px] font-medium text-white shadow-sm"
                             >
-                                <Badge
-                                    class="rounded-full border-white/30 bg-black/25 text-white"
-                                >
-                                    {{ item.game_name }}
-                                </Badge>
-                                <Badge
-                                    class="rounded-full border-white/30 bg-black/25 text-white"
-                                >
-                                    {{ getDisplayTypeName(item) }}
-                                </Badge>
-                                <Badge
-                                    class="rounded-full border-white/30 bg-black/25 text-white"
-                                >
-                                    {{ getOriginalLabel(item.mods_original) }}
-                                </Badge>
-                                <Badge
-                                    v-if="item.support_gmm"
-                                    class="rounded-full border-white/30 bg-emerald-500/30 text-white"
-                                >
-                                    {{ t("explore.gloss.supportGmm") }}
-                                </Badge>
-                                <Badge
-                                    v-if="isCloudDriveMod(item)"
-                                    class="rounded-full border-white/30 bg-sky-500/30 text-white"
-                                >
-                                    {{ t("explore.gloss.cloudDrive") }}
-                                </Badge>
-                            </div>
+                                {{ t("explore.gloss.supportGmm") }}
+                            </span>
+                            <span
+                                v-if="isCloudDriveMod(item)"
+                                class="rounded-md bg-sky-500 px-1.5 py-0.5 text-[11px] font-medium text-white shadow-sm"
+                            >
+                                {{ t("explore.gloss.cloudDrive") }}
+                            </span>
                         </div>
-                    </div>
+                    </button>
 
-                    <div class="space-y-4 p-4">
-                        <div class="flex flex-col gap-2">
-                            <div
-                                class="line-clamp-2 text-base font-semibold leading-6"
+                    <div class="flex flex-1 flex-col gap-3 p-4">
+                        <div class="space-y-1.5">
+                            <h3
+                                class="line-clamp-2 text-sm leading-5 font-medium"
+                                :title="getDisplayTitle(item)"
                             >
                                 {{ getDisplayTitle(item) }}
-                            </div>
-                            <div
+                            </h3>
+                            <p
                                 v-if="shouldShowOriginalTitle(item)"
                                 class="line-clamp-1 text-xs text-muted-foreground"
                             >
                                 {{ item.mods_title }}
-                            </div>
-                            <div
-                                class="flex flex-wrap gap-2"
-                                v-if="getDisplayTags(item).length"
-                            >
-                                <Badge
-                                    v-for="tag in getDisplayTags(item).slice(
-                                        0,
-                                        5,
-                                    )"
-                                    :key="tag.key"
-                                    class="rounded-full"
-                                    variant="outline"
-                                >
-                                    {{ tag.label }}
-                                </Badge>
-                            </div>
+                            </p>
                         </div>
 
                         <div
-                            class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                            class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
                         >
-                            <span>{{
-                                t("explore.meta.author", {
-                                    author:
-                                        item.user_nickName ||
-                                        item.mods_author ||
-                                        t("explore.common.unknown"),
-                                })
-                            }}</span>
-                            <span>·</span>
-                            <span>{{
-                                t("explore.meta.updated", {
-                                    date: formatDate(item.mods_updateTime),
-                                })
-                            }}</span>
-                            <span>·</span>
+                            <span class="truncate">
+                                {{
+                                    item.user_nickName ||
+                                    item.mods_author ||
+                                    t("explore.common.unknown")
+                                }}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span>{{ formatDate(item.mods_updateTime) }}</span>
+                            <span aria-hidden="true">·</span>
                             <span>
                                 {{
-                                    t("explore.meta.version", {
-                                        version:
-                                            item.mods_version ||
-                                            getLatestResource(item)
-                                                ?.mods_resource_version ||
-                                            t("explore.common.unknown"),
-                                    })
+                                    getLatestResource(item)
+                                        ?.mods_resource_size ||
+                                    t("explore.common.unknownSize")
                                 }}
                             </span>
                         </div>
 
-                        <div class="grid grid-cols-3 gap-2 text-center text-xs">
-                            <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">
-                                    {{ t("explore.stats.downloads") }}
-                                </div>
-                                <div class="mt-1 text-sm font-semibold">
-                                    {{ formatNumber(item.mods_download_cnt) }}
-                                </div>
-                            </div>
-                            <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">
-                                    {{ t("explore.stats.views") }}
-                                </div>
-                                <div class="mt-1 text-sm font-semibold">
-                                    {{ formatNumber(item.mods_click_cnt) }}
-                                </div>
-                            </div>
-                            <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">
-                                    {{ t("explore.stats.favorites") }}
-                                </div>
-                                <div class="mt-1 text-sm font-semibold">
-                                    {{ formatNumber(item.mods_mark_cnt) }}
-                                </div>
-                            </div>
-                        </div>
-
                         <div
-                            class="rounded-xl border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"
+                            class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
                         >
-                            <div
-                                class="flex items-center justify-between gap-3"
-                            >
-                                <span>
-                                    {{
-                                        t("explore.resources.count", {
-                                            count: item.mods_resource.length,
-                                        })
-                                    }}
-                                </span>
-                                <span>
-                                    {{
-                                        getLatestResource(item)
-                                            ?.mods_resource_size ||
-                                        t("explore.common.unknownSize")
-                                    }}
-                                </span>
-                            </div>
-                            <div class="mt-2 line-clamp-1">
-                                {{ getDisplayResourceName(item) }}
-                            </div>
+                            <span class="flex items-center gap-1">
+                                <IconDownload class="size-3.5" />
+                                {{ formatNumber(item.mods_download_cnt) }}
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <IconEye class="size-3.5" />
+                                {{ formatNumber(item.mods_click_cnt) }}
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <IconStar class="size-3.5" />
+                                {{ formatNumber(item.mods_mark_cnt) }}
+                            </span>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-2 items-start">
-                            <div class="space-y-1.5">
+                        <div class="flex flex-wrap gap-1">
+                            <Badge
+                                variant="secondary"
+                                class="rounded-md px-1.5 py-0 text-[11px] font-normal"
+                            >
+                                {{ getDisplayTypeName(item) }}
+                            </Badge>
+                            <Badge
+                                variant="outline"
+                                class="rounded-md px-1.5 py-0 text-[11px] font-normal text-muted-foreground"
+                            >
+                                {{ getOriginalLabel(item.mods_original) }}
+                            </Badge>
+                            <Badge
+                                v-for="tag in getDisplayTags(item).slice(0, 2)"
+                                :key="tag.key"
+                                variant="outline"
+                                class="rounded-md px-1.5 py-0 text-[11px] font-normal text-muted-foreground"
+                            >
+                                {{ tag.label }}
+                            </Badge>
+                        </div>
+
+                        <div class="mt-auto space-y-2 pt-1">
+                            <div
+                                v-if="shouldShowDownloadProgress(item)"
+                                class="space-y-1"
+                            >
+                                <div
+                                    class="h-1 overflow-hidden rounded-full bg-muted"
+                                >
+                                    <div
+                                        class="h-full rounded-full transition-[width] duration-300"
+                                        :class="getProgressBarClass(item)"
+                                        :style="{
+                                            width: `${getDownloadStatus(item).progress}%`,
+                                        }"
+                                    ></div>
+                                </div>
+                                <div
+                                    class="flex items-center justify-between text-[11px] text-muted-foreground"
+                                >
+                                    <span>{{ getDownloadStatus(item).label }}</span>
+                                    <span>{{ getDownloadStatus(item).progress }}%</span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
                                 <Button
-                                    class="w-full"
                                     size="sm"
                                     variant="outline"
+                                    @click="openModDetail(item)"
+                                >
+                                    {{ t("explore.actions.viewDetail") }}
+                                </Button>
+                                <Button
+                                    size="sm"
                                     :class="getDownloadButtonClass(item)"
                                     :disabled="isDownloadActionDisabled(item)"
                                     @click="openLatestResource(item)"
                                 >
-                                    <IconDownload />
+                                    <IconDownload class="size-4" />
                                     {{ getDownloadButtonLabel(item) }}
                                 </Button>
-                                <div
-                                    v-if="shouldShowDownloadProgress(item)"
-                                    class="space-y-1"
-                                >
-                                    <div
-                                        class="h-1.5 overflow-hidden rounded-full bg-muted"
-                                    >
-                                        <div
-                                            class="h-full rounded-full transition-[width] duration-300"
-                                            :class="getProgressBarClass(item)"
-                                            :style="{
-                                                width: `${getDownloadStatus(item).progress}%`,
-                                            }"
-                                        ></div>
-                                    </div>
-                                    <div
-                                        class="flex items-center justify-between text-[11px] text-muted-foreground"
-                                    >
-                                        <span>
-                                            {{ getDownloadStatus(item).label }}
-                                        </span>
-                                        <span>
-                                            {{
-                                                getDownloadStatus(item)
-                                                    .progress
-                                            }}%
-                                        </span>
-                                    </div>
-                                </div>
                             </div>
-                            <Button
-                                class="flex-1"
-                                size="sm"
-                                @click="openModDetail(item)"
-                            >
-                                <IconExternalLink />
-                                {{ t("explore.actions.viewDetail") }}
-                            </Button>
                         </div>
                     </div>
                 </article>
             </section>
 
             <section
-                class="flex flex-col gap-4 rounded-2xl border px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                class="flex flex-col items-center justify-between gap-4 border-t pt-5 lg:flex-row"
             >
-                <div class="text-sm text-muted-foreground">
+                <p class="text-xs text-muted-foreground">
                     {{
                         t("explore.common.currentPageSummary", {
                             page,
@@ -2150,42 +2032,50 @@ function jumpToPage() {
                             totalCount: formatNumber(totalCount),
                         })
                     }}
-                </div>
+                </p>
 
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-1">
                     <Button
-                        size="sm"
-                        variant="outline"
+                        size="icon-sm"
+                        variant="ghost"
                         :disabled="page <= 1"
+                        :aria-label="t('explore.actions.previousPage')"
                         @click="goToPage(page - 1)"
                     >
-                        <IconChevronLeft />
-                        {{ t("explore.actions.previousPage") }}
+                        <IconChevronLeft class="size-4" />
                     </Button>
 
                     <template v-for="item in paginationItems" :key="item.key">
                         <span
                             v-if="item.ellipsis"
-                            class="px-2 text-sm text-muted-foreground"
+                            class="px-1 text-sm text-muted-foreground"
                         >
                             {{ item.label }}
                         </span>
                         <Button
                             v-else
-                            size="sm"
-                            :variant="
-                                item.page === page ? 'default' : 'outline'
-                            "
+                            size="icon-sm"
+                            :variant="item.page === page ? 'default' : 'ghost'"
                             @click="goToPage(item.page ?? 1)"
                         >
                             {{ item.label }}
                         </Button>
                     </template>
 
-                    <div class="flex items-center gap-2">
+                    <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        :disabled="page >= totalPages"
+                        :aria-label="t('explore.actions.nextPage')"
+                        @click="goToPage(page + 1)"
+                    >
+                        <IconChevronRight class="size-4" />
+                    </Button>
+
+                    <div class="ml-2 flex items-center gap-1.5">
                         <Input
                             v-model="jumpPageInput"
-                            class="h-9 w-20"
+                            class="h-8 w-16"
                             type="number"
                             min="1"
                             :max="totalPages || 1"
@@ -2197,21 +2087,12 @@ function jumpToPage() {
                             :disabled="totalPages <= 1"
                             @click="jumpToPage"
                         >
-                            跳转
+                            {{ t("explore.actions.jumpPage") }}
                         </Button>
                     </div>
-
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        :disabled="page >= totalPages"
-                        @click="goToPage(page + 1)"
-                    >
-                        {{ t("explore.actions.nextPage") }}
-                        <IconChevronRight />
-                    </Button>
                 </div>
             </section>
         </template>
     </div>
 </template>
+

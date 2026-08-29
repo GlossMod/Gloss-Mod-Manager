@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Language } from "@/lib/language";
 import { AutoStart } from "@/lib/auto-start";
 import { PersistentStore } from "@/lib/persistent-store";
+import { SecretStore } from "@/lib/secret-store";
 import { validateNexusModsUser } from "@/lib/third-party-mod-api";
 import { Theme } from "@/lib/theme";
 import { computed, ref, watch } from "vue";
@@ -126,21 +127,55 @@ export const useSettings = defineStore("Settings", () => {
     const mcpPromptItemEnabledMap = PersistentStore.useValue<
         Record<string, boolean>
     >("mcpPromptItemEnabledMap", {});
-    const nexusModsUser = PersistentStore.useValue<INexusModsUser | null>(
+    const nexusModsUserProfile = PersistentStore.useValue<INexusModsUser | null>(
         "nexusModsUser",
         null,
     );
+    // NexusMods 令牌单独存入加密存储，settings.json 中仅保留展示用的资料字段。
+    const nexusModsToken = SecretStore.useValue("nexusModsToken");
+
+    // 向下兼容：外部仍按 nexusModsUser.key 读取令牌，这里在内存中回填。
+    const nexusModsUser = computed<INexusModsUser | null>(() => {
+        if (!nexusModsUserProfile.value) {
+            return null;
+        }
+
+        return {
+            ...nexusModsUserProfile.value,
+            key: nexusModsToken.value,
+        };
+    });
 
     const baseUrl = PersistentStore.useValue<string>("agentbaseUrl", "");
-    const apiKey = PersistentStore.useValue<string>("agentApiKey", "");
+    // AI API Key 与 GlossMod Key 属于凭据，从明文配置迁移到加密存储。
+    const apiKey = SecretStore.useValue("agentApiKey", "agentApiKey");
 
-    const glossModKey = PersistentStore.useValue<string>("glossModKey", "");
+    const glossModKey = SecretStore.useValue("glossModKey", "glossModKey");
+
+    void SecretStore.migrateLegacyJsonField<INexusModsUser>(
+        "nexusModsToken",
+        "nexusModsUser",
+        "key",
+    );
+
+    /**
+     * 等待凭据从加密存储完成首次读取。
+     *
+     * stronghold 读取比明文 store 慢，依赖 apiKey 判断配置完整性的逻辑必须先 await 这个。
+     */
+    async function waitForCredentials() {
+        await SecretStore.ready(
+            "agentApiKey",
+            "glossModKey",
+            "nexusModsToken",
+        );
+    }
 
     const debugInfo = ref<unknown>({});
     const nexusModsLoginLoading = ref(false);
 
     const nexusModsAuthorized = computed(() => {
-        return Boolean(nexusModsUser.value?.key?.trim());
+        return Boolean(nexusModsToken.value.trim());
     });
 
     watch(
@@ -277,7 +312,9 @@ export const useSettings = defineStore("Settings", () => {
                         const user = await validateNexusModsUser(
                             response.data.api_key,
                         );
-                        nexusModsUser.value = user;
+                        // 令牌写入加密存储，明文配置里只留展示信息。
+                        nexusModsToken.value = response.data.api_key;
+                        nexusModsUserProfile.value = { ...user, key: "" };
                         finalize(
                             (value) => resolve(value as INexusModsUser),
                             user,
@@ -300,7 +337,8 @@ export const useSettings = defineStore("Settings", () => {
     }
 
     function clearNexusModsAuthorization() {
-        nexusModsUser.value = null;
+        nexusModsUserProfile.value = null;
+        nexusModsToken.value = "";
         sessionStorage.removeItem(NEXUS_SSO_CONNECTION_TOKEN_KEY);
     }
 
@@ -339,5 +377,6 @@ export const useSettings = defineStore("Settings", () => {
         selectStoragePath,
         loginNexusModsUser,
         clearNexusModsAuthorization,
+        waitForCredentials,
     };
 });

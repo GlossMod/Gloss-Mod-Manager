@@ -31,6 +31,7 @@ const {
 } = storeToRefs(settings);
 
 const endpoint = McpService.endpoint;
+const authToken = McpService.authToken;
 const isBusy = McpService.isBusy;
 const serverStatus = McpService.serverStatus;
 
@@ -196,6 +197,10 @@ const vscodeConfig = computed(() => {
                 "gloss-mod-manager": {
                     type: "http",
                     url: endpoint.value,
+                    // 令牌每次启动服务时重新生成，重启后需重新复制配置。
+                    headers: {
+                        Authorization: `Bearer ${authToken.value || "<启动服务后获取令牌>"}`,
+                    },
                 },
             },
         },
@@ -203,6 +208,22 @@ const vscodeConfig = computed(() => {
         4,
     );
 });
+
+async function copyAuthToken() {
+    if (!authToken.value) {
+        ElMessage.warning("请先启动 MCP 服务以生成访问令牌。");
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(authToken.value);
+        ElMessage.success("已复制访问令牌。");
+    } catch (error: unknown) {
+        console.error("复制访问令牌失败");
+        console.error(error);
+        ElMessage.error("复制访问令牌失败。");
+    }
+}
 
 async function copyVscodeConfig() {
     try {
@@ -377,6 +398,31 @@ async function copyVscodeConfig() {
                                 readonly
                             />
                         </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="mcp-auth-token">访问令牌</Label>
+                        <div class="flex gap-2">
+                            <Input
+                                id="mcp-auth-token"
+                                :model-value="
+                                    authToken || '启动服务后自动生成'
+                                "
+                                readonly
+                            />
+                            <Button
+                                variant="outline"
+                                :disabled="!authToken"
+                                @click="copyAuthToken"
+                            >
+                                <Copy class="h-4 w-4" />
+                                复制
+                            </Button>
+                        </div>
+                        <p class="text-xs text-muted-foreground">
+                            MCP 服务仅监听本机，并要求请求携带此令牌（Authorization:
+                            Bearer）。令牌在每次启动服务时重新生成，请勿外泄。
+                        </p>
                     </div>
 
                     <div class="flex flex-wrap gap-3">

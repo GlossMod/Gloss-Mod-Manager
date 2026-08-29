@@ -81,6 +81,11 @@ const lang = {
             unknownTime: "알 수 없는 시간",
             unknownSize: "알 수 없는 크기",
             searchMods: "Mod 검색",
+            pageTitle: "Mod 탐색",
+            pageSubtitle: "여러 플랫폼의 Mod를 살펴보고 다운로드하세요",
+            translationSettings: "번역 설정",
+            translationNeedsAi: "번역을 사용하려면 먼저 AI를 설정하세요.",
+            providerTabs: "Mod 플랫폼",
         },
         actions: {
             ...enUS.explore.actions,
@@ -97,6 +102,7 @@ const lang = {
             openSource: "출처 열기",
             previousPage: "이전",
             nextPage: "다음",
+            jumpPage: "이동",
         },
         filters: {
             ...enUS.explore.filters,

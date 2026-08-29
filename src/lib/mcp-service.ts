@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { appLogDir } from "@tauri-apps/api/path";
+import { platform } from "@tauri-apps/plugin-os";
 import type { Pinia } from "pinia";
 import { computed } from "vue";
 import { ref } from "vue";
@@ -36,6 +38,7 @@ type JsonRpcId = string | number | null;
 interface IMcpServerSnapshot {
     status: McpServerStatus;
     port: number | null;
+    authToken: string | null;
 }
 
 interface IMcpTransportEventPayload {
@@ -380,7 +383,8 @@ export const mcpToolDefinitions: readonly IMcpToolDefinition[] = [
     {
         name: "get-directory-contents",
         title: "获取目录下的文件夹",
-        description: "返回目录下的全部文件夹路径。",
+        description:
+            "返回目录下的全部文件夹路径。仅允许访问 mod 存储目录、当前游戏目录与日志目录。",
         inputSchema: createObjectSchema(
             {
                 path: {
@@ -399,7 +403,8 @@ export const mcpToolDefinitions: readonly IMcpToolDefinition[] = [
     {
         name: "get-files-in-directory",
         title: "获取目录下的文件",
-        description: "返回目录下的全部文件路径。",
+        description:
+            "返回目录下的全部文件路径。仅允许访问 mod 存储目录、当前游戏目录与日志目录。",
         inputSchema: createObjectSchema(
             {
                 path: {
@@ -418,7 +423,8 @@ export const mcpToolDefinitions: readonly IMcpToolDefinition[] = [
     {
         name: "copy-file-to-location",
         title: "复制文件",
-        description: "将一个文件复制到目标位置。",
+        description:
+            "将一个文件复制到目标位置。源路径与目标路径均需位于 mod 存储目录、当前游戏目录或日志目录内。",
         inputSchema: createObjectSchema(
             {
                 sourcePath: {
@@ -436,7 +442,8 @@ export const mcpToolDefinitions: readonly IMcpToolDefinition[] = [
     {
         name: "copy-folder-to-location",
         title: "复制文件夹",
-        description: "将一个文件夹复制到目标位置。",
+        description:
+            "将一个文件夹复制到目标位置。源路径与目标路径均需位于 mod 存储目录、当前游戏目录或日志目录内。",
         inputSchema: createObjectSchema(
             {
                 sourcePath: {
@@ -454,7 +461,8 @@ export const mcpToolDefinitions: readonly IMcpToolDefinition[] = [
     {
         name: "read-file-contents",
         title: "读取文件内容",
-        description: "读取文本文件内容，可选最大返回长度。",
+        description:
+            "读取文本文件内容，可选最大返回长度。仅允许访问 mod 存储目录、当前游戏目录与日志目录。",
         inputSchema: createObjectSchema(
             {
                 path: {
@@ -545,6 +553,8 @@ export const mcpPromptDefinitions: readonly IMcpPromptDefinition[] = [
 const mcpPort = PersistentStore.useValue<number>("mcpPort", DEFAULT_MCP_PORT);
 const serverStatus = ref<McpServerStatus>("stopped");
 const isInitialized = ref(false);
+// 令牌由 Rust 端每次启动时生成，不做持久化，仅用于展示和拼接客户端配置。
+const authToken = ref<string>("");
 const endpoint = computed(() => `http://127.0.0.1:${mcpPort.value}/mcp`);
 const isRunning = computed(() => serverStatus.value === "running");
 const isBusy = computed(() => {
@@ -664,6 +674,87 @@ function toOptionalBoolean(value: unknown, fallback: boolean) {
     return typeof value === "boolean" ? value : fallback;
 }
 
+/**
+ * 统一为正斜杠并去掉尾部分隔符，便于做前缀包含关系判断。
+ */
+function normalizePathForCompare(value: string) {
+    const normalized = value.replace(/\\/gu, "/").replace(/\/+$/u, "");
+
+    return platform() === "windows" ? normalized.toLowerCase() : normalized;
+}
+
+/**
+ * 收集当前允许 MCP 文件类工具访问的根目录：
+ * mod 存储目录、当前管理游戏目录以及应用日志目录。
+ */
+async function collectAllowedFileRoots() {
+    const { manager } = getStores();
+    const roots: string[] = [];
+
+    if (manager.managerRoot) {
+        roots.push(manager.managerRoot);
+    }
+
+    const gamePath = manager.managerGame?.gamePath ?? "";
+    if (gamePath) {
+        roots.push(gamePath);
+    }
+
+    try {
+        roots.push(await appLogDir());
+    } catch (error: unknown) {
+        console.error("获取日志目录失败");
+        console.error(error);
+    }
+
+    return roots.filter(Boolean).map(normalizePathForCompare);
+}
+
+/**
+ * 校验路径是否落在允许的根目录内。
+ *
+ * MCP 服务虽然只监听回环地址并且已做令牌鉴权，但文件类工具仍不应具备
+ * 全盘读写能力，否则一旦令牌泄露即等于任意文件读写。
+ */
+async function assertPathWithinAllowedRoots(
+    targetPath: string,
+    fieldName: string,
+) {
+    const allowedRoots = await collectAllowedFileRoots();
+
+    if (allowedRoots.length === 0) {
+        throw new Error(
+            "当前未配置 mod 存储目录，无法确定允许访问的路径范围。",
+        );
+    }
+
+    const normalizedTarget = normalizePathForCompare(targetPath);
+
+    if (!normalizedTarget) {
+        throw new Error(`${fieldName} 不是有效路径。`);
+    }
+
+    // 显式拒绘 .. 片段，避免通过相对路径穿越到根目录之外。
+    if (normalizedTarget.split("/").includes("..")) {
+        throw new Error(`${fieldName} 不允许包含上级目录片段。`);
+    }
+
+    const isWithinAllowedRoots = allowedRoots.some((root) => {
+        return (
+            normalizedTarget === root ||
+            normalizedTarget.startsWith(`${root}/`)
+        );
+    });
+
+    if (!isWithinAllowedRoots) {
+        throw new Error(
+            `${fieldName} 超出允许访问范围，仅允许访问 mod 存储目录、当前游戏目录与日志目录。`,
+        );
+    }
+
+    return targetPath;
+}
+
 function toRequiredNumber(value: unknown, fieldName: string) {
     const resolved = typeof value === "number" ? value : Number(value);
 
@@ -719,6 +810,7 @@ async function syncServerState() {
         mcpPort.value = snapshot.port;
     }
 
+    authToken.value = snapshot.authToken ?? "";
     serverStatus.value = snapshot.status;
 }
 
@@ -1395,6 +1487,8 @@ async function handleToolCall(
                 const path = toRequiredString(args.path, "path");
                 const recursive = toOptionalBoolean(args.recursive, false);
 
+                await assertPathWithinAllowedRoots(path, "path");
+
                 if (!(await FileHandler.isDir(path))) {
                     throw new Error("path 不是有效目录。");
                 }
@@ -1411,6 +1505,8 @@ async function handleToolCall(
             case "get-files-in-directory": {
                 const path = toRequiredString(args.path, "path");
                 const recursive = toOptionalBoolean(args.recursive, false);
+
+                await assertPathWithinAllowedRoots(path, "path");
 
                 if (!(await FileHandler.isDir(path))) {
                     throw new Error("path 不是有效目录。");
@@ -1435,6 +1531,9 @@ async function handleToolCall(
                     args.targetPath,
                     "targetPath",
                 );
+
+                await assertPathWithinAllowedRoots(sourcePath, "sourcePath");
+                await assertPathWithinAllowedRoots(targetPath, "targetPath");
 
                 if (!(await FileHandler.fileExists(sourcePath))) {
                     throw new Error("sourcePath 不存在。");
@@ -1461,6 +1560,9 @@ async function handleToolCall(
                     "targetPath",
                 );
 
+                await assertPathWithinAllowedRoots(sourcePath, "sourcePath");
+                await assertPathWithinAllowedRoots(targetPath, "targetPath");
+
                 if (!(await FileHandler.isDir(sourcePath))) {
                     throw new Error("sourcePath 不是有效目录。");
                 }
@@ -1482,6 +1584,8 @@ async function handleToolCall(
                     1,
                     Math.floor(toOptionalNumber(args.maxLength, 20000)),
                 );
+
+                await assertPathWithinAllowedRoots(path, "path");
 
                 if (!(await FileHandler.fileExists(path))) {
                     throw new Error("目标文件不存在。");
@@ -1944,6 +2048,7 @@ async function initialize(pinia?: Pinia) {
                 mcpPort.value = event.payload.port;
             }
 
+            authToken.value = event.payload.authToken ?? "";
             serverStatus.value = event.payload.status;
         });
         isInitialized.value = true;
@@ -2013,9 +2118,11 @@ async function start(portValue: number = mcpPort.value) {
         if (typeof snapshot.port === "number" && snapshot.port > 0) {
             mcpPort.value = snapshot.port;
         }
+        authToken.value = snapshot.authToken ?? "";
         await persistServerEnabledState(true);
     } catch (error: unknown) {
         serverStatus.value = "stopped";
+        authToken.value = "";
         throw new Error(getErrorMessage(error));
     }
 }
@@ -2037,6 +2144,7 @@ async function stop() {
     try {
         const snapshot = await invoke<IMcpServerSnapshot>("mcp_stop_server");
         serverStatus.value = snapshot.status;
+        authToken.value = snapshot.authToken ?? "";
         await persistServerEnabledState(false);
     } catch (error: unknown) {
         serverStatus.value = "running";
@@ -2055,6 +2163,7 @@ function setPort(value: number) {
 }
 
 export const McpService = {
+    authToken,
     autoStartFromSettings,
     endpoint,
     initialize,

@@ -81,6 +81,11 @@ const lang = {
             unknownTime: "日時不明",
             unknownSize: "サイズ不明",
             searchMods: "Mod を検索",
+            pageTitle: "Mod を探す",
+            pageSubtitle: "各プラットフォームの Mod を閲覧・ダウンロード",
+            translationSettings: "翻訳設定",
+            translationNeedsAi: "翻訳を使うには先に AI を設定してください。",
+            providerTabs: "Mod プラットフォーム",
         },
         actions: {
             ...enUS.explore.actions,
@@ -97,6 +102,7 @@ const lang = {
             openSource: "ソースを開く",
             previousPage: "前へ",
             nextPage: "次へ",
+            jumpPage: "移動",
         },
         filters: {
             ...enUS.explore.filters,

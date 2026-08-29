@@ -41,9 +41,10 @@ body:
           label: 操作系统
           description: 你使用的是什么系统?
           options:
-              - Windows 7
               - Windows 10
               - Windows 11
+              - macOS
+              - Linux
               - 其他
           default: 0
       validations:

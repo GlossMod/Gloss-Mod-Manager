@@ -109,6 +109,11 @@ const lang = {
             unknownTime: "未知時間",
             unknownSize: "大小未知",
             searchMods: "搜尋 Mods",
+            pageTitle: "瀏覽 Mod",
+            pageSubtitle: "瀏覽並下載來自各大平台的 Mod",
+            translationSettings: "翻譯設定",
+            translationNeedsAi: "需要先設定 AI 才能使用翻譯功能。",
+            providerTabs: "Mod 平台",
         },
         actions: {
             ...zhCN.explore.actions,
@@ -125,6 +130,7 @@ const lang = {
             openSource: "開啟來源",
             previousPage: "上一頁",
             nextPage: "下一頁",
+            jumpPage: "跳轉",
         },
         filters: {
             ...zhCN.explore.filters,

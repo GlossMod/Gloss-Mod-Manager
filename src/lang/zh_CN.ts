@@ -252,6 +252,11 @@ const lang = {
             unknownSize: "大小未知",
             emptyDash: "-",
             searchMods: "搜索 Mods",
+            pageTitle: "游览 Mod",
+            pageSubtitle: "浏览并下载来自各大平台的 Mod",
+            translationSettings: "翻译设置",
+            translationNeedsAi: "需要先配置 AI 才能使用翻译功能。",
+            providerTabs: "Mod 平台",
         },
         actions: {
             expandFilters: "展开筛选",
@@ -267,6 +272,7 @@ const lang = {
             openSource: "打开来源",
             previousPage: "上一页",
             nextPage: "下一页",
+            jumpPage: "跳转",
         },
         filters: {
             allSources: "全部来源",

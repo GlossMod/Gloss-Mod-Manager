@@ -1,5 +1,6 @@
 import { Aria2Rpc } from "@/lib/aria2-rpc";
 import { FileHandler } from "@/lib/FileHandler";
+import { getUrlFileName, sanitizeFileName } from "@/lib/file-name-utils";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
     findGlossDuplicateLocalMods,
@@ -79,10 +80,6 @@ const RESOURCE_FORMAT_ALIAS_MAP: Record<string, string> = {
     tbz2: "tar.bz2",
 };
 
-function sanitizeFileName(name: string) {
-    return name.replace(/[<>:"/\\|?*\u0000-\u001F]/gu, "-").trim();
-}
-
 export function isGlossCloudDriveUrl(url?: string) {
     const normalizedUrl = (url ?? "").trim();
 
@@ -95,19 +92,6 @@ export function isGlossCloudDriveUrl(url?: string) {
 
 export function isGlossCloudDriveResource(resource?: IResource | null) {
     return isGlossCloudDriveUrl(resource?.mods_resource_url);
-}
-
-function getUrlFileName(url: string) {
-    try {
-        const parsed = new URL(url);
-        const fileName = decodeURIComponent(
-            parsed.pathname.split("/").pop() || "download.bin",
-        );
-
-        return sanitizeFileName(fileName) || "download.bin";
-    } catch {
-        return "download.bin";
-    }
 }
 
 function getUrlExtension(url: string) {

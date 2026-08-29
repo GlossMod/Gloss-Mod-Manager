@@ -45,19 +45,13 @@ const NEXUS_FACET_ALL_VALUE = "all";
 const EMPTY_POSTER =
     "data:image/svg+xml;charset=UTF-8," +
     encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
-            <defs>
-                <linearGradient id="remote-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#171310" />
-                    <stop offset="55%" stop-color="#6b421f" />
-                    <stop offset="100%" stop-color="#d7a562" />
-                </linearGradient>
-            </defs>
-            <rect width="640" height="360" rx="24" fill="url(#remote-gradient)" />
-            <circle cx="120" cy="90" r="72" fill="rgba(255,255,255,0.12)" />
-            <circle cx="540" cy="290" r="96" fill="rgba(255,255,255,0.08)" />
-            <text x="48" y="210" fill="#fff5df" font-size="34" font-family="Arial, sans-serif">Third Party Mod</text>
-            <text x="48" y="252" fill="#ffe0a3" font-size="20" font-family="Arial, sans-serif">暂无可用封面</text>
+        <svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+            <rect width="640" height="400" fill="#e7e7e7" />
+            <g fill="none" stroke="#b4b4b4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="264" y="164" width="112" height="88" rx="10" />
+                <path d="M264 226l30-26 26 22 30-28 26 22" />
+            </g>
+            <circle cx="300" cy="192" r="9" fill="#b4b4b4" />
         </svg>
     `);
 
@@ -136,7 +130,7 @@ const dateFormatter = computed(
         }),
 );
 const markdownParser = new MarkdownIt({
-    html: true,
+    html: false,
     breaks: true,
     linkify: true,
     typographer: true,
@@ -205,7 +199,6 @@ let listTranslationAbortController: AbortController | null = null;
 let detailTranslationAbortController: AbortController | null = null;
 let routeSyncPending = false;
 let hasHandledInitialProvider = false;
-let hasHandledInitialGame = false;
 
 const currentGame = computed(() => manager.managerGame);
 const currentGameName = computed(() => {
@@ -259,19 +252,6 @@ const hasActiveNexusFacets = computed(() => {
 const currentPageDownloads = computed(() => {
     return mods.value.reduce((total, item) => total + (item.downloads ?? 0), 0);
 });
-const currentPageFileCount = computed(() => {
-    return mods.value.reduce(
-        (total, item) => total + (item.filesCount ?? 0),
-        0,
-    );
-});
-const currentPageFileCountLabel = computed(() => {
-    if (mods.value.some((item) => usesLazyFileLoading(item))) {
-        return t("explore.status.pendingLoad");
-    }
-
-    return formatNumber(currentPageFileCount.value);
-});
 const shouldPollTaskSnapshots = computed(() => {
     return Object.values(downloadStatusMap.value).some((status) => {
         return ["active", "waiting", "paused"].includes(status.state);
@@ -321,24 +301,6 @@ const detailTranslationRequestKey = computed(() => {
 const anyTranslationLoading = computed(() => {
     return translationLoading.value || detailTranslationLoading.value;
 });
-const summaryCards = computed(() => [
-    {
-        label: t("explore.summary.totalResults"),
-        value: formatNumber(totalCount.value),
-    },
-    {
-        label: t("explore.summary.currentPage"),
-        value: String(totalPages.value > 0 ? page.value : 0),
-    },
-    {
-        label: t("explore.summary.totalPages"),
-        value: String(totalPages.value),
-    },
-    {
-        label: t("explore.summary.currentPageResources"),
-        value: currentPageFileCountLabel.value,
-    },
-]);
 const paginationItems = computed<IPageItem[]>(() => {
     if (totalPages.value <= 1) {
         return [];
@@ -410,9 +372,16 @@ watch(
 
 watch(
     currentGame,
-    () => {
-        if (!hasHandledInitialGame) {
-            hasHandledInitialGame = true;
+    (_game, previousGame) => {
+        // immediate 首次运行：初始加载由 provider 的 watch 负责，这里不重复处理。
+        if (previousGame === undefined) {
+            return;
+        }
+
+        // managerGame 由持久化存储异步注水，首帧为 null。null -> 游戏 这一次变化不是
+        // 用户切换游戏，不能重置页码，否则带 query 从详情页返回会丢掉页码与筛选。
+        if (!previousGame) {
+            void fetchMods();
             return;
         }
 
@@ -1759,14 +1728,6 @@ function getResourceSizeLabel(item: IThirdPartyModItem) {
         : t("explore.common.unknownSize");
 }
 
-function getPrimaryResourceName(item: IThirdPartyModItem) {
-    if (usesLazyFileLoading(item)) {
-        return t("explore.resources.loadAfterClick");
-    }
-
-    return item.primaryFile?.name || t("explore.resources.noResourceName");
-}
-
 function getDownloadButtonLabel(item: IThirdPartyModItem) {
     if (queueingResourceKey.value.startsWith(`${item.source}-${item.id}-`)) {
         return t("explore.status.submitting");
@@ -1904,316 +1865,287 @@ function renderDescription(
         return `<p class="empty-markdown">${t("explore.detail.noDescription")}</p>`;
     }
 
+    // 简介来自第三方平台接口，属于不可信输入，渲染前统一净化。
     if (format === "markdown") {
-        return markdownParser.render(source);
+        return sanitizeHtml(markdownParser.render(source));
     }
 
     if (format === "html") {
-        return source;
+        return sanitizeHtml(source);
     }
 
-    return `<p>${escapeHtml(source).replace(/\n/gu, "<br />")}</p>`;
-}
-
-function escapeHtml(source: string) {
-    return source
-        .replace(/&/gu, "&amp;")
-        .replace(/</gu, "&lt;")
-        .replace(/>/gu, "&gt;")
-        .replace(/"/gu, "&quot;")
-        .replace(/'/gu, "&#39;");
+    return `<p>${escapeHtmlText(source).replace(/\n/gu, "<br />")}</p>`;
 }
 </script>
 
 <template>
     <div class="space-y-5">
-        <section class="overflow-hidden rounded-2xl border p-4">
-            <div
-                class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between"
-            >
-                <div class="space-y-3">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <Badge
-                            v-if="currentGameName"
-                            class="rounded-full"
-                            variant="outline"
-                        >
-                            {{
-                                t("explore.common.currentGame", {
-                                    game: currentGameName,
-                                })
-                            }}
-                        </Badge>
-                        <Badge v-else class="rounded-full" variant="outline">
-                            {{ t("explore.thirdParty.noLocalGameProvider") }}
-                        </Badge>
-                    </div>
-                    <div>
-                        <h4 class="text-base font-semibold tracking-tight">
-                            {{ providerLabel }}
-                        </h4>
-                    </div>
-                    <div
-                        class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-                    >
-                        <span>
-                            {{
-                                totalPages > 0
-                                    ? t("explore.common.pageProgress", {
-                                          page,
-                                          total: totalPages,
-                                      })
-                                    : t("explore.common.noPaginationResult")
-                            }}
-                        </span>
-                        <span>·</span>
-                        <span>
-                            {{
-                                hasActiveFilters
-                                    ? t("explore.common.filtersActive")
-                                    : t("explore.common.filtersInactive")
-                            }}
-                        </span>
-                        <span>·</span>
-                        <span>
-                            {{
-                                t("explore.thirdParty.currentPageDownloads", {
-                                    count: formatNumber(currentPageDownloads),
-                                })
-                            }}
-                        </span>
-                        <span v-if="loading">
-                            · {{ t("explore.common.updating") }}
-                        </span>
-                        <span v-if="translationLoading">
-                            · {{ t("explore.translation.translating") }}
-                        </span>
-                        <span v-else-if="translationErrorMessage">
-                            · {{ translationErrorMessage }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:min-w-105">
-                    <div
-                        v-for="item in summaryCards"
-                        :key="item.label"
-                        class="rounded-xl border border-border/60 bg-background/80 px-3 py-3 backdrop-blur-sm"
-                    >
-                        <div class="text-xs text-muted-foreground">
-                            {{ item.label }}
-                        </div>
-                        <div class="mt-1 text-lg font-semibold tracking-tight">
-                            {{ item.value }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="space-y-4 rounded-2xl border p-4">
+        <section class="space-y-3">
             <div
                 class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
             >
-                <div class="flex-1 flex gap-3 lg:max-w-2xl">
-                    <div class="relative w-full">
-                        <Input
-                            v-model="searchKeyword"
-                            class="pr-10"
-                            :placeholder="t('explore.common.searchMods')"
-                            @keydown.enter="fetchMods"
-                        />
-                        <IconSearch
-                            class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-                        />
-                    </div>
+                <div class="relative w-full lg:max-w-md">
+                    <IconSearch
+                        class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                        v-model="searchKeyword"
+                        class="h-10 pl-9"
+                        :placeholder="t('explore.common.searchMods')"
+                        @keydown.enter="fetchMods"
+                    />
                 </div>
+
                 <div class="flex flex-wrap items-center gap-2">
                     <Button
                         size="sm"
-                        variant="outline"
+                        :variant="isFiltersExpanded ? 'secondary' : 'outline'"
                         @click="isFiltersExpanded = !isFiltersExpanded"
                     >
-                        <IconListFilter />
+                        <IconListFilter class="size-4" />
                         {{
                             isFiltersExpanded
                                 ? t("explore.actions.collapseFilters")
                                 : t("explore.actions.expandFilters")
                         }}
                     </Button>
-                    <Button size="sm" variant="outline" @click="resetFilters">
-                        <IconFilterX />
+                    <Button
+                        v-if="hasActiveFilters"
+                        size="sm"
+                        variant="ghost"
+                        @click="resetFilters"
+                    >
+                        <IconFilterX class="size-4" />
                         {{ t("explore.actions.resetSearch") }}
                     </Button>
                 </div>
             </div>
 
-            <div v-show="isFiltersExpanded" class="space-y-3 pt-3 border-t">
-                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    <div>
-                        <div class="text-sm font-medium">
-                            {{ t("explore.filters.pageSize") }}
-                        </div>
-                        <Select v-model="pageSize">
-                            <SelectTrigger class="mt-2 w-full">
-                                <SelectValue
-                                    :placeholder="
-                                        t('explore.filters.choosePageSize')
-                                    "
-                                />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem
-                                    v-for="item in PAGE_SIZE_OPTIONS"
-                                    :key="item"
-                                    :value="item"
-                                >
-                                    {{
-                                        t("explore.filters.perPageOption", {
-                                            count: item,
-                                        })
-                                    }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+            <div
+                class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+            >
+                <span class="font-medium text-foreground">
+                    {{
+                        t("explore.common.totalResults", {
+                            count: formatNumber(totalCount),
+                        })
+                    }}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                    {{
+                        totalPages > 0
+                            ? t("explore.common.pageProgress", {
+                                  page,
+                                  total: totalPages,
+                              })
+                            : t("explore.common.noPaginationResult")
+                    }}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                    {{
+                        t("explore.thirdParty.currentPageDownloads", {
+                            count: formatNumber(currentPageDownloads),
+                        })
+                    }}
+                </span>
+                <template v-if="currentGameName">
+                    <span aria-hidden="true">·</span>
+                    <span>
+                        {{
+                            t("explore.common.currentGame", {
+                                game: currentGameName,
+                            })
+                        }}
+                    </span>
+                </template>
+                <template v-else>
+                    <span aria-hidden="true">·</span>
+                    <span>{{ t("explore.thirdParty.noLocalGameProvider") }}</span>
+                </template>
+                <span
+                    v-if="loading"
+                    class="flex items-center gap-1.5 text-foreground"
+                >
+                    <IconLoaderCircle class="size-3 animate-spin" />
+                    {{ t("explore.common.updating") }}
+                </span>
+                <span
+                    v-if="translationLoading"
+                    class="flex items-center gap-1.5 text-foreground"
+                >
+                    <IconLoaderCircle class="size-3 animate-spin" />
+                    {{ t("explore.translation.translating") }}
+                </span>
+                <span v-else-if="translationErrorMessage" class="text-destructive">
+                    {{ translationErrorMessage }}
+                </span>
+            </div>
 
-                    <div>
-                        <div class="text-sm font-medium">
-                            {{ t("explore.filters.sort") }}
-                        </div>
-                        <Select v-model="selectedSort">
-                            <SelectTrigger class="mt-2 w-full">
+            <div
+                v-show="isFiltersExpanded"
+                class="grid gap-4 rounded-xl border bg-muted/25 p-4 sm:grid-cols-2 xl:grid-cols-3"
+            >
+                <div class="space-y-2">
+                    <Label class="text-xs font-normal text-muted-foreground">
+                        {{ t("explore.filters.sort") }}
+                    </Label>
+                    <Select v-model="selectedSort">
+                        <SelectTrigger class="w-full">
+                            <SelectValue
+                                :placeholder="t('explore.filters.chooseSort')"
+                            />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem
+                                v-for="item in sortOptions"
+                                :key="item.value"
+                                :value="item.value"
+                            >
+                                {{ item.label }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div class="space-y-2">
+                    <Label class="text-xs font-normal text-muted-foreground">
+                        {{ t("explore.filters.pageSize") }}
+                    </Label>
+                    <Select v-model="pageSize">
+                        <SelectTrigger class="w-full">
+                            <SelectValue
+                                :placeholder="t('explore.filters.choosePageSize')"
+                            />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem
+                                v-for="item in PAGE_SIZE_OPTIONS"
+                                :key="item"
+                                :value="item"
+                            >
+                                {{
+                                    t("explore.filters.perPageOption", {
+                                        count: item,
+                                    })
+                                }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <template v-if="isNexusModsProvider">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
+                            {{ t("explore.filters.nexusCategory") }}
+                        </Label>
+                        <Select
+                            v-model="selectedNexusCategory"
+                            :disabled="!nexusFacets.categoryName.length"
+                        >
+                            <SelectTrigger class="w-full">
                                 <SelectValue
                                     :placeholder="
-                                        t('explore.filters.chooseSort')
+                                        t('explore.filters.allCategories')
                                     "
                                 />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent class="max-h-72">
+                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                    {{ t("explore.filters.allCategories") }}
+                                </SelectItem>
                                 <SelectItem
-                                    v-for="item in sortOptions"
+                                    v-for="item in nexusFacets.categoryName"
                                     :key="item.value"
                                     :value="item.value"
                                 >
-                                    {{ item.label }}
+                                    {{ formatFacetOptionLabel(item) }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
-                    <template v-if="isNexusModsProvider">
-                        <div>
-                            <div class="text-sm font-medium">
-                                {{ t("explore.filters.nexusCategory") }}
-                            </div>
-                            <Select
-                                v-model="selectedNexusCategory"
-                                :disabled="!nexusFacets.categoryName.length"
-                            >
-                                <SelectTrigger class="mt-2 w-full">
-                                    <SelectValue
-                                        :placeholder="
-                                            t('explore.filters.allCategories')
-                                        "
-                                    />
-                                </SelectTrigger>
-                                <SelectContent class="max-h-72">
-                                    <SelectItem :value="NEXUS_FACET_ALL_VALUE">
-                                        {{ t("explore.filters.allCategories") }}
-                                    </SelectItem>
-                                    <SelectItem
-                                        v-for="item in nexusFacets.categoryName"
-                                        :key="item.value"
-                                        :value="item.value"
-                                    >
-                                        {{ formatFacetOptionLabel(item) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
+                            {{ t("explore.filters.nexusLanguage") }}
+                        </Label>
+                        <Select
+                            v-model="selectedNexusLanguage"
+                            :disabled="!nexusFacets.languageName.length"
+                        >
+                            <SelectTrigger class="w-full">
+                                <SelectValue
+                                    :placeholder="
+                                        t('explore.filters.allLanguages')
+                                    "
+                                />
+                            </SelectTrigger>
+                            <SelectContent class="max-h-72">
+                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                    {{ t("explore.filters.allLanguages") }}
+                                </SelectItem>
+                                <SelectItem
+                                    v-for="item in nexusFacets.languageName"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ formatFacetOptionLabel(item) }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
 
-                        <div>
-                            <div class="text-sm font-medium">
-                                {{ t("explore.filters.nexusLanguage") }}
-                            </div>
-                            <Select
-                                v-model="selectedNexusLanguage"
-                                :disabled="!nexusFacets.languageName.length"
-                            >
-                                <SelectTrigger class="mt-2 w-full">
-                                    <SelectValue
-                                        :placeholder="
-                                            t('explore.filters.allLanguages')
-                                        "
-                                    />
-                                </SelectTrigger>
-                                <SelectContent class="max-h-72">
-                                    <SelectItem :value="NEXUS_FACET_ALL_VALUE">
-                                        {{ t("explore.filters.allLanguages") }}
-                                    </SelectItem>
-                                    <SelectItem
-                                        v-for="item in nexusFacets.languageName"
-                                        :key="item.value"
-                                        :value="item.value"
-                                    >
-                                        {{ formatFacetOptionLabel(item) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <div class="text-sm font-medium">
-                                {{ t("explore.filters.nexusTag") }}
-                            </div>
-                            <Select
-                                v-model="selectedNexusTag"
-                                :disabled="!nexusFacets.tag.length"
-                            >
-                                <SelectTrigger class="mt-2 w-full">
-                                    <SelectValue
-                                        :placeholder="
-                                            t('explore.filters.allTags')
-                                        "
-                                    />
-                                </SelectTrigger>
-                                <SelectContent class="max-h-72">
-                                    <SelectItem :value="NEXUS_FACET_ALL_VALUE">
-                                        {{ t("explore.filters.allTags") }}
-                                    </SelectItem>
-                                    <SelectItem
-                                        v-for="item in nexusFacets.tag"
-                                        :key="item.value"
-                                        :value="item.value"
-                                    >
-                                        {{ formatFacetOptionLabel(item) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </template>
-                </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-normal text-muted-foreground">
+                            {{ t("explore.filters.nexusTag") }}
+                        </Label>
+                        <Select
+                            v-model="selectedNexusTag"
+                            :disabled="!nexusFacets.tag.length"
+                        >
+                            <SelectTrigger class="w-full">
+                                <SelectValue
+                                    :placeholder="t('explore.filters.allTags')"
+                                />
+                            </SelectTrigger>
+                            <SelectContent class="max-h-72">
+                                <SelectItem :value="NEXUS_FACET_ALL_VALUE">
+                                    {{ t("explore.filters.allTags") }}
+                                </SelectItem>
+                                <SelectItem
+                                    v-for="item in nexusFacets.tag"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ formatFacetOptionLabel(item) }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </template>
             </div>
         </section>
-
         <section
             v-if="errorMessage"
-            class="rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-5"
+            class="rounded-xl border border-destructive/30 bg-destructive/5 p-6"
         >
             <div
-                class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
             >
-                <div>
-                    <div class="text-sm font-semibold text-destructive">
-                        {{ t("explore.common.loadFailed") }}
+                <div class="flex items-start gap-3">
+                    <IconCircleAlert class="mt-0.5 size-5 shrink-0 text-destructive" />
+                    <div class="space-y-1">
+                        <div class="text-sm font-medium">
+                            {{ t("explore.common.loadFailed") }}
+                        </div>
+                        <p class="text-sm text-muted-foreground">
+                            {{ errorMessage }}
+                        </p>
                     </div>
-                    <p class="mt-1 text-sm text-muted-foreground">
-                        {{ errorMessage }}
-                    </p>
                 </div>
-                <Button variant="outline" @click="fetchMods">
-                    <IconRefreshCcw />
+                <Button size="sm" variant="outline" @click="fetchMods">
+                    <IconRefreshCcw class="size-4" />
                     {{ t("explore.actions.retry") }}
                 </Button>
             </div>
@@ -2221,312 +2153,201 @@ function escapeHtml(source: string) {
 
         <section
             v-else-if="loading && !mods.length"
-            class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+            class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
         >
             <div
-                v-for="item in 6"
+                v-for="item in 8"
                 :key="item"
-                class="overflow-hidden rounded-2xl border bg-background"
+                class="overflow-hidden rounded-xl border"
             >
-                <div class="aspect-video animate-pulse bg-muted"></div>
+                <div class="aspect-16/10 animate-pulse bg-muted"></div>
                 <div class="space-y-3 p-4">
-                    <div class="h-5 w-2/3 animate-pulse rounded bg-muted"></div>
-                    <div
-                        class="h-4 w-full animate-pulse rounded bg-muted"
-                    ></div>
-                    <div class="h-4 w-5/6 animate-pulse rounded bg-muted"></div>
-                    <div class="grid grid-cols-3 gap-2">
-                        <div class="h-8 animate-pulse rounded bg-muted"></div>
-                        <div class="h-8 animate-pulse rounded bg-muted"></div>
-                        <div class="h-8 animate-pulse rounded bg-muted"></div>
-                    </div>
+                    <div class="h-4 w-3/4 animate-pulse rounded bg-muted"></div>
+                    <div class="h-3 w-1/2 animate-pulse rounded bg-muted"></div>
+                    <div class="h-8 w-full animate-pulse rounded bg-muted"></div>
                 </div>
             </div>
         </section>
 
         <section
             v-else-if="!mods.length"
-            class="rounded-2xl border border-dashed px-4 py-10 text-center"
+            class="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center"
         >
-            <div class="mx-auto max-w-md">
-                <div class="text-base font-semibold">
-                    {{ t("explore.empty.title") }}
-                </div>
-                <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    {{ t("explore.thirdParty.emptyDescription") }}
-                </p>
-                <div class="mt-5 flex justify-center">
-                    <Button variant="outline" @click="resetFilters">
-                        <IconFilterX />
-                        {{ t("explore.actions.clearFilters") }}
-                    </Button>
-                </div>
+            <div
+                class="flex size-11 items-center justify-center rounded-full bg-muted"
+            >
+                <IconSearchX class="size-5 text-muted-foreground" />
             </div>
+            <div class="mt-4 text-sm font-medium">
+                {{ t("explore.empty.title") }}
+            </div>
+            <p class="mt-1.5 max-w-sm text-sm leading-6 text-muted-foreground">
+                {{ t("explore.thirdParty.emptyDescription") }}
+            </p>
+            <Button size="sm" variant="outline" class="mt-5" @click="resetFilters">
+                <IconFilterX class="size-4" />
+                {{ t("explore.actions.clearFilters") }}
+            </Button>
         </section>
 
         <template v-else>
             <section
-                class="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
-            >
-                <div>
-                    <div class="text-sm font-medium">
-                        {{
-                            currentGameName
-                                ? t("explore.thirdParty.listTitleWithGame", {
-                                      game: currentGameName,
-                                      provider: providerLabel,
-                                  })
-                                : t("explore.thirdParty.listTitle", {
-                                      provider: providerLabel,
-                                  })
-                        }}
-                    </div>
-                    <div class="mt-1 text-xs text-muted-foreground">
-                        {{
-                            t("explore.common.totalResults", {
-                                count: formatNumber(totalCount),
-                            })
-                        }}
-                    </div>
-                </div>
-                <div
-                    class="flex items-center gap-2 text-xs text-muted-foreground"
-                >
-                    <IconLoaderCircle
-                        v-if="loading"
-                        class="size-4 animate-spin"
-                    />
-                    <span>{{
-                        totalPages > 0
-                            ? t("explore.common.pageProgress", {
-                                  page,
-                                  total: totalPages,
-                              })
-                            : t("explore.common.noPagination")
-                    }}</span>
-                </div>
-            </section>
-
-            <section
-                class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
+                class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
             >
                 <article
                     v-for="item in mods"
                     :key="`${item.source}-${item.id}`"
-                    class="group overflow-hidden rounded-2xl border bg-card transition-colors hover:border-primary/40"
+                    class="group flex flex-col overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-md"
                 >
-                    <div class="relative aspect-video overflow-hidden bg-muted">
+                    <button
+                        type="button"
+                        class="relative block aspect-16/10 w-full cursor-pointer overflow-hidden bg-muted text-left"
+                        @click="openModDetail(item)"
+                    >
                         <img
                             :src="getCoverUrl(item)"
                             :alt="getDisplayTitle(item)"
-                            class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                            loading="lazy"
+                            class="size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
                             @error="handleCoverError"
                         />
                         <div
-                            class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/65 via-black/20 to-transparent px-4 py-3 text-white"
+                            v-if="item.nsfw"
+                            class="absolute top-2 left-2 flex flex-wrap gap-1.5"
                         >
-                            <div
-                                class="flex flex-wrap items-center gap-2 text-xs"
+                            <span
+                                class="rounded-md bg-rose-500 px-1.5 py-0.5 text-[11px] font-medium text-white shadow-sm"
                             >
-                                <Badge
-                                    class="rounded-full border-white/30 bg-black/25 text-white"
-                                >
-                                    {{ providerLabel }}
-                                </Badge>
-                                <Badge
-                                    v-if="getDisplayCategories(item)[0]"
-                                    class="rounded-full border-white/30 bg-black/25 text-white"
-                                >
-                                    {{ getDisplayCategories(item)[0].label }}
-                                </Badge>
-                                <Badge
-                                    v-if="
-                                        item.primaryFile ||
-                                        usesLazyFileLoading(item)
-                                    "
-                                    class="rounded-full border-white/30 bg-emerald-500/30 text-white"
-                                >
-                                    {{ getResourceCountLabel(item) }}
-                                </Badge>
-                                <Badge
-                                    v-if="item.nsfw"
-                                    class="rounded-full border-white/30 bg-rose-500/30 text-white"
-                                >
-                                    {{ t("explore.badges.nsfw") }}
-                                </Badge>
-                            </div>
+                                {{ t("explore.badges.nsfw") }}
+                            </span>
                         </div>
-                    </div>
+                    </button>
 
-                    <div class="space-y-4 p-4">
-                        <div class="flex flex-col gap-2">
-                            <div
-                                class="line-clamp-2 text-base font-semibold leading-6"
+                    <div class="flex flex-1 flex-col gap-3 p-4">
+                        <div class="space-y-1.5">
+                            <h3
+                                class="line-clamp-2 text-sm leading-5 font-medium"
+                                :title="getDisplayTitle(item)"
                             >
                                 {{ getDisplayTitle(item) }}
-                            </div>
-                            <div
+                            </h3>
+                            <p
                                 v-if="shouldShowOriginalTitle(item)"
                                 class="line-clamp-1 text-xs text-muted-foreground"
                             >
                                 {{ item.title }}
-                            </div>
-                            <div
-                                v-if="getDisplayTags(item).length"
-                                class="flex flex-wrap gap-2"
-                            >
-                                <Badge
-                                    v-for="tag in getDisplayTags(item).slice(
-                                        0,
-                                        5,
-                                    )"
-                                    :key="tag.key"
-                                    class="rounded-full"
-                                    variant="outline"
-                                >
-                                    {{ tag.label }}
-                                </Badge>
-                            </div>
+                            </p>
                         </div>
 
                         <div
-                            class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                            class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
                         >
-                            <span>
-                                {{
-                                    t("explore.meta.author", {
-                                        author:
-                                            item.author ||
-                                            t("explore.common.unknown"),
-                                    })
-                                }}
+                            <span class="truncate">
+                                {{ item.author || t("explore.common.unknown") }}
                             </span>
-                            <span>·</span>
-                            <span>
-                                {{
-                                    t("explore.meta.updated", {
-                                        date: formatDate(item.updatedAt),
-                                    })
-                                }}
-                            </span>
-                            <span>·</span>
-                            <span>
-                                {{
-                                    t("explore.meta.version", {
-                                        version:
-                                            item.version ||
-                                            t("explore.common.unknown"),
-                                    })
-                                }}
-                            </span>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-2 text-center text-xs">
-                            <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">
-                                    {{ t("explore.stats.downloads") }}
-                                </div>
-                                <div class="mt-1 text-sm font-semibold">
-                                    {{ formatNumber(item.downloads) }}
-                                </div>
-                            </div>
-                            <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">
-                                    {{ t("explore.stats.likes") }}
-                                </div>
-                                <div class="mt-1 text-sm font-semibold">
-                                    {{ formatNumber(item.likes) }}
-                                </div>
-                            </div>
-                            <div class="rounded-xl bg-muted/55 px-2 py-2.5">
-                                <div class="text-muted-foreground">
-                                    {{ t("explore.stats.resources") }}
-                                </div>
-                                <div class="mt-1 text-sm font-semibold">
-                                    {{ getResourceCountLabel(item) }}
-                                </div>
-                            </div>
+                            <span aria-hidden="true">·</span>
+                            <span>{{ formatDate(item.updatedAt) }}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{{ getResourceSizeLabel(item) }}</span>
                         </div>
 
                         <div
-                            class="rounded-xl border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"
+                            class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
                         >
-                            <div
-                                class="flex items-center justify-between gap-3"
-                            >
-                                <span>{{ getResourceCountLabel(item) }}</span>
-                                <span>{{ getResourceSizeLabel(item) }}</span>
-                            </div>
-                            <div class="mt-2 line-clamp-1">
-                                {{ getPrimaryResourceName(item) }}
-                            </div>
+                            <span class="flex items-center gap-1">
+                                <IconDownload class="size-3.5" />
+                                {{ formatNumber(item.downloads) }}
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <IconHeart class="size-3.5" />
+                                {{ formatNumber(item.likes) }}
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <IconPackage class="size-3.5" />
+                                {{ getResourceCountLabel(item) }}
+                            </span>
                         </div>
 
-                        <div
-                            v-if="shouldShowDownloadProgress(item)"
-                            class="space-y-2 rounded-xl border border-dashed px-3 py-3"
-                        >
-                            <div
-                                class="flex items-center justify-between text-xs text-muted-foreground"
+                        <div class="flex flex-wrap gap-1">
+                            <Badge
+                                v-if="getDisplayCategories(item)[0]"
+                                variant="secondary"
+                                class="rounded-md px-1.5 py-0 text-[11px] font-normal"
                             >
-                                <span>{{ getDownloadStatus(item).label }}</span>
-                                <span
-                                    >{{
-                                        getDownloadStatus(item).progress
-                                    }}%</span
-                                >
-                            </div>
+                                {{ getDisplayCategories(item)[0].label }}
+                            </Badge>
+                            <Badge
+                                v-for="tag in getDisplayTags(item).slice(0, 2)"
+                                :key="tag.key"
+                                variant="outline"
+                                class="rounded-md px-1.5 py-0 text-[11px] font-normal text-muted-foreground"
+                            >
+                                {{ tag.label }}
+                            </Badge>
+                        </div>
+
+                        <div class="mt-auto space-y-2 pt-1">
                             <div
-                                class="h-2 overflow-hidden rounded-full bg-muted"
+                                v-if="shouldShowDownloadProgress(item)"
+                                class="space-y-1"
                             >
                                 <div
-                                    class="h-full rounded-full transition-all"
-                                    :class="getProgressBarClass(item)"
-                                    :style="{
-                                        width: `${getDownloadStatus(item).progress}%`,
-                                    }"
-                                ></div>
+                                    class="h-1 overflow-hidden rounded-full bg-muted"
+                                >
+                                    <div
+                                        class="h-full rounded-full transition-[width] duration-300"
+                                        :class="getProgressBarClass(item)"
+                                        :style="{
+                                            width: `${getDownloadStatus(item).progress}%`,
+                                        }"
+                                    ></div>
+                                </div>
+                                <div
+                                    class="flex items-center justify-between text-[11px] text-muted-foreground"
+                                >
+                                    <span>{{ getDownloadStatus(item).label }}</span>
+                                    <span>{{ getDownloadStatus(item).progress }}%</span>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="grid grid-cols-3 items-start gap-2">
-                            <Button
-                                class="flex-1"
-                                size="sm"
-                                variant="outline"
-                                @click="openModDetail(item)"
-                            >
-                                <IconExternalLink />
-                                {{ t("explore.actions.viewDetail") }}
-                            </Button>
-
-                            <Button
-                                class="w-full"
-                                size="sm"
-                                variant="outline"
-                                @click="openModWebsite(item)"
-                            >
-                                {{ t("explore.actions.openWebsite") }}
-                            </Button>
-                            <Button
-                                class="w-full"
-                                size="sm"
-                                :class="getDownloadButtonClass(item)"
-                                :disabled="isDownloadActionDisabled(item)"
-                                @click="openLatestResource(item)"
-                            >
-                                <IconDownload />
-                                {{ getDownloadButtonLabel(item) }}
-                            </Button>
+                            <div class="flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    class="flex-1"
+                                    @click="openModDetail(item)"
+                                >
+                                    {{ t("explore.actions.viewDetail") }}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    class="flex-1"
+                                    :class="getDownloadButtonClass(item)"
+                                    :disabled="isDownloadActionDisabled(item)"
+                                    @click="openLatestResource(item)"
+                                >
+                                    <IconDownload class="size-4" />
+                                    {{ getDownloadButtonLabel(item) }}
+                                </Button>
+                                <Button
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    :aria-label="t('explore.actions.openWebsite')"
+                                    :title="t('explore.actions.openWebsite')"
+                                    @click="openModWebsite(item)"
+                                >
+                                    <IconExternalLink class="size-4" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </article>
             </section>
 
             <section
-                class="flex flex-col gap-4 rounded-2xl border px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                class="flex flex-col items-center justify-between gap-4 border-t pt-5 lg:flex-row"
             >
-                <div class="text-sm text-muted-foreground">
+                <p class="text-xs text-muted-foreground">
                     {{
                         t("explore.common.currentPageSummary", {
                             page,
@@ -2534,42 +2355,50 @@ function escapeHtml(source: string) {
                             totalCount: formatNumber(totalCount),
                         })
                     }}
-                </div>
+                </p>
 
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-1">
                     <Button
-                        size="sm"
-                        variant="outline"
+                        size="icon-sm"
+                        variant="ghost"
                         :disabled="page <= 1"
+                        :aria-label="t('explore.actions.previousPage')"
                         @click="goToPage(page - 1)"
                     >
-                        <IconChevronLeft />
-                        {{ t("explore.actions.previousPage") }}
+                        <IconChevronLeft class="size-4" />
                     </Button>
 
                     <template v-for="item in paginationItems" :key="item.key">
                         <span
                             v-if="item.ellipsis"
-                            class="px-2 text-sm text-muted-foreground"
+                            class="px-1 text-sm text-muted-foreground"
                         >
                             {{ item.label }}
                         </span>
                         <Button
                             v-else
-                            size="sm"
-                            :variant="
-                                item.page === page ? 'default' : 'outline'
-                            "
+                            size="icon-sm"
+                            :variant="item.page === page ? 'default' : 'ghost'"
                             @click="goToPage(item.page ?? 1)"
                         >
                             {{ item.label }}
                         </Button>
                     </template>
 
-                    <div class="flex items-center gap-2">
+                    <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        :disabled="page >= totalPages"
+                        :aria-label="t('explore.actions.nextPage')"
+                        @click="goToPage(page + 1)"
+                    >
+                        <IconChevronRight class="size-4" />
+                    </Button>
+
+                    <div class="ml-2 flex items-center gap-1.5">
                         <Input
                             v-model="jumpPageInput"
-                            class="h-9 w-20"
+                            class="h-8 w-16"
                             type="number"
                             min="1"
                             :max="totalPages || 1"
@@ -2581,19 +2410,9 @@ function escapeHtml(source: string) {
                             :disabled="totalPages <= 1"
                             @click="jumpToPage"
                         >
-                            跳转
+                            {{ t("explore.actions.jumpPage") }}
                         </Button>
                     </div>
-
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        :disabled="page >= totalPages"
-                        @click="goToPage(page + 1)"
-                    >
-                        {{ t("explore.actions.nextPage") }}
-                        <IconChevronRight />
-                    </Button>
                 </div>
             </section>
         </template>
@@ -2626,45 +2445,40 @@ function escapeHtml(source: string) {
                     </DialogDescription>
                 </DialogHeader>
 
-                <div v-if="detailLoading" class="space-y-3">
-                    <div
-                        class="h-10 w-2/3 animate-pulse rounded-xl bg-muted"
-                    ></div>
-                    <div class="h-56 animate-pulse rounded-2xl bg-muted"></div>
+                <div v-if="detailLoading" class="space-y-4">
+                    <div class="h-56 animate-pulse rounded-xl bg-muted"></div>
+                    <div class="h-4 w-2/3 animate-pulse rounded bg-muted"></div>
                     <div class="h-24 animate-pulse rounded-xl bg-muted"></div>
                 </div>
 
                 <div
                     v-else-if="detailError"
-                    class="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+                    class="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4"
                 >
-                    {{ detailError }}
+                    <IconCircleAlert class="mt-0.5 size-5 shrink-0 text-destructive" />
+                    <p class="text-sm text-muted-foreground">{{ detailError }}</p>
                 </div>
 
                 <div v-else-if="selectedMod" class="space-y-6">
-                    <section
-                        class="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]"
-                    >
-                        <div
-                            class="overflow-hidden rounded-2xl border bg-muted/50"
-                        >
+                    <section class="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+                        <div class="overflow-hidden rounded-xl border bg-muted">
                             <img
                                 :src="getCoverUrl(selectedMod)"
                                 :alt="getDisplayTitle(selectedMod, true)"
-                                class="h-full w-full object-cover"
+                                class="aspect-16/10 w-full object-cover"
                                 @error="handleCoverError"
                             />
                         </div>
 
                         <div class="space-y-4">
-                            <div class="flex flex-wrap gap-2">
-                                <Badge class="rounded-full" variant="secondary">
+                            <div class="flex flex-wrap gap-1.5">
+                                <Badge variant="secondary" class="rounded-md font-normal">
                                     {{ providerLabel }}
                                 </Badge>
                                 <Badge
                                     v-if="selectedMod.version"
-                                    class="rounded-full"
                                     variant="outline"
+                                    class="rounded-md font-normal"
                                 >
                                     {{
                                         t("explore.detail.versionBadge", {
@@ -2674,108 +2488,106 @@ function escapeHtml(source: string) {
                                 </Badge>
                                 <Badge
                                     v-if="selectedMod.nsfw"
-                                    class="rounded-full"
                                     variant="destructive"
+                                    class="rounded-md font-normal"
                                 >
                                     {{ t("explore.badges.nsfw") }}
                                 </Badge>
                             </div>
 
-                            <div
-                                class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+                            <dl
+                                class="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4"
                             >
-                                <div class="rounded-xl bg-muted/45 px-3 py-3">
-                                    <div class="text-xs text-muted-foreground">
+                                <div class="space-y-0.5">
+                                    <dt class="text-xs text-muted-foreground">
                                         {{ t("explore.stats.author") }}
-                                    </div>
-                                    <div class="mt-1 text-sm font-medium">
+                                    </dt>
+                                    <dd class="truncate text-sm font-medium">
                                         {{
                                             selectedMod.author ||
                                             t("explore.common.emptyDash")
                                         }}
-                                    </div>
+                                    </dd>
                                 </div>
-                                <div class="rounded-xl bg-muted/45 px-3 py-3">
-                                    <div class="text-xs text-muted-foreground">
+                                <div class="space-y-0.5">
+                                    <dt class="text-xs text-muted-foreground">
                                         {{ t("explore.stats.downloads") }}
-                                    </div>
-                                    <div class="mt-1 text-sm font-medium">
-                                        {{
-                                            formatNumber(selectedMod.downloads)
-                                        }}
-                                    </div>
+                                    </dt>
+                                    <dd class="text-sm font-medium">
+                                        {{ formatNumber(selectedMod.downloads) }}
+                                    </dd>
                                 </div>
-                                <div class="rounded-xl bg-muted/45 px-3 py-3">
-                                    <div class="text-xs text-muted-foreground">
+                                <div class="space-y-0.5">
+                                    <dt class="text-xs text-muted-foreground">
                                         {{ t("explore.stats.likes") }}
-                                    </div>
-                                    <div class="mt-1 text-sm font-medium">
+                                    </dt>
+                                    <dd class="text-sm font-medium">
                                         {{ formatNumber(selectedMod.likes) }}
-                                    </div>
+                                    </dd>
                                 </div>
-                                <div class="rounded-xl bg-muted/45 px-3 py-3">
-                                    <div class="text-xs text-muted-foreground">
+                                <div class="space-y-0.5">
+                                    <dt class="text-xs text-muted-foreground">
                                         {{ t("explore.stats.updatedAt") }}
-                                    </div>
-                                    <div class="mt-1 text-sm font-medium">
+                                    </dt>
+                                    <dd class="text-sm font-medium">
                                         {{ formatDate(selectedMod.updatedAt) }}
-                                    </div>
+                                    </dd>
                                 </div>
-                            </div>
+                            </dl>
 
-                            <p class="text-sm leading-7 text-muted-foreground">
-                                {{
-                                    getDisplaySummary(selectedMod) ||
-                                    t("explore.detail.noSummary")
-                                }}
-                            </p>
-                            <p
-                                v-if="shouldShowOriginalSummary(selectedMod)"
-                                class="text-xs leading-6 text-muted-foreground"
-                            >
-                                {{ selectedMod.summary }}
-                            </p>
+                            <div class="space-y-2">
+                                <p class="text-sm leading-6 text-muted-foreground">
+                                    {{
+                                        getDisplaySummary(selectedMod) ||
+                                        t("explore.detail.noSummary")
+                                    }}
+                                </p>
+                                <p
+                                    v-if="shouldShowOriginalSummary(selectedMod)"
+                                    class="text-xs leading-5 text-muted-foreground/80"
+                                >
+                                    {{ selectedMod.summary }}
+                                </p>
+                            </div>
 
                             <div
                                 v-if="getDisplayTags(selectedMod, true).length"
-                                class="flex flex-wrap gap-2"
+                                class="flex flex-wrap gap-1"
                             >
                                 <Badge
-                                    v-for="tag in getDisplayTags(
-                                        selectedMod,
-                                        true,
-                                    )"
+                                    v-for="tag in getDisplayTags(selectedMod, true)"
                                     :key="tag.key"
-                                    class="rounded-full"
                                     variant="outline"
+                                    class="rounded-md px-1.5 py-0 text-[11px] font-normal text-muted-foreground"
                                 >
                                     {{ tag.label }}
                                 </Badge>
                             </div>
 
-                            <div class="flex flex-wrap gap-2">
+                            <div class="flex flex-wrap gap-2 pt-1">
                                 <Button
-                                    variant="secondary"
                                     :disabled="
                                         isModDownloadActionDisabled(selectedMod)
                                     "
                                     @click="handleDownload(selectedMod)"
                                 >
+                                    <IconDownload class="size-4" />
                                     {{ getModDownloadButtonLabel(selectedMod) }}
                                 </Button>
                                 <Button
                                     variant="outline"
                                     @click="openModWebsite(selectedMod)"
                                 >
+                                    <IconExternalLink class="size-4" />
                                     {{ t("explore.actions.openWebsite") }}
                                 </Button>
                             </div>
                         </div>
                     </section>
 
-                    <section
-                        class="prose prose-sm max-w-none rounded-2xl border border-border/70 p-5 dark:prose-invert"
-                    >
+                    <Separator />
+
+                    <section class="mod-description">
                         <p
                             v-if="
                                 detailTranslationLoading &&
@@ -2803,55 +2615,52 @@ function escapeHtml(source: string) {
                         </div>
                     </section>
 
+                    <Separator />
+
                     <section class="space-y-3">
-                        <div class="text-base font-semibold">
+                        <h3 class="text-sm font-medium">
                             {{ t("explore.detail.fileList") }}
-                        </div>
+                        </h3>
                         <div
                             v-if="selectedMod.files.length === 0"
-                            class="rounded-xl border border-dashed p-6 text-sm text-muted-foreground"
+                            class="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground"
                         >
                             {{ t("explore.detail.noFiles") }}
                         </div>
-                        <div v-else class="space-y-3">
+                        <div v-else class="divide-y rounded-xl border">
                             <div
                                 v-for="file in selectedMod.files"
                                 :key="file.id"
-                                class="flex flex-col gap-3 rounded-xl border p-4 lg:flex-row lg:items-center lg:justify-between"
+                                class="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
                             >
-                                <div class="space-y-1">
-                                    <div class="font-medium">
+                                <div class="min-w-0 space-y-1">
+                                    <div class="truncate text-sm font-medium">
                                         {{ file.name }}
                                     </div>
-                                    <div class="text-sm text-muted-foreground">
+                                    <div class="text-xs text-muted-foreground">
                                         {{
                                             t("explore.detail.fileMeta", {
                                                 version:
                                                     file.version ||
-                                                    t(
-                                                        "explore.detail.unlabeled",
-                                                    ),
+                                                    t("explore.detail.unlabeled"),
                                                 size: formatBytes(file.size),
-                                                date: formatDate(
-                                                    file.createdAt,
-                                                ),
+                                                date: formatDate(file.createdAt),
                                             })
                                         }}
                                     </div>
                                 </div>
-                                <div class="flex flex-wrap gap-2">
+                                <div class="flex shrink-0 flex-wrap gap-2">
                                     <Button
-                                        variant="secondary"
+                                        size="sm"
                                         :disabled="
                                             isFileDownloadActionDisabled(
                                                 selectedMod,
                                                 file,
                                             )
                                         "
-                                        @click="
-                                            handleDownload(selectedMod, file.id)
-                                        "
+                                        @click="handleDownload(selectedMod, file.id)"
                                     >
+                                        <IconDownload class="size-4" />
                                         {{
                                             getFileDownloadButtonLabel(
                                                 selectedMod,
@@ -2860,6 +2669,7 @@ function escapeHtml(source: string) {
                                         }}
                                     </Button>
                                     <Button
+                                        size="sm"
                                         variant="outline"
                                         @click="
                                             openModWebsite({
@@ -2876,6 +2686,7 @@ function escapeHtml(source: string) {
                 </div>
             </DialogScrollContent>
         </Dialog>
+
     </div>
 </template>
 
@@ -2884,7 +2695,113 @@ function escapeHtml(source: string) {
     color: var(--muted-foreground);
 }
 
-:deep(.prose a) {
+/* 项目未安装 @tailwindcss/typography，这里手写渲染后 Markdown 的排版 */
+.mod-description {
+    font-size: 0.875rem;
+    line-height: 1.75;
+}
+
+.mod-description :deep(h1),
+.mod-description :deep(h2),
+.mod-description :deep(h3),
+.mod-description :deep(h4) {
+    margin: 1.4rem 0 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.mod-description :deep(h1) {
+    font-size: 1.3rem;
+}
+
+.mod-description :deep(h2) {
+    font-size: 1.15rem;
+}
+
+.mod-description :deep(h3) {
+    font-size: 1rem;
+}
+
+.mod-description :deep(p),
+.mod-description :deep(ul),
+.mod-description :deep(ol),
+.mod-description :deep(blockquote),
+.mod-description :deep(pre),
+.mod-description :deep(table) {
+    margin: 0 0 0.9rem;
+}
+
+.mod-description :deep(ul),
+.mod-description :deep(ol) {
+    padding-left: 1.3rem;
+    list-style: revert;
+}
+
+.mod-description :deep(li + li) {
+    margin-top: 0.3rem;
+}
+
+.mod-description :deep(a) {
     color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+}
+
+.mod-description :deep(blockquote) {
+    border-left: 2px solid var(--border);
+    padding-left: 1rem;
+    color: var(--muted-foreground);
+}
+
+.mod-description :deep(code) {
+    border-radius: 0.35rem;
+    background: var(--muted);
+    padding: 0.1rem 0.35rem;
+    font-size: 0.875em;
+}
+
+.mod-description :deep(pre) {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--muted);
+    padding: 1rem;
+}
+
+.mod-description :deep(pre code) {
+    background: transparent;
+    padding: 0;
+}
+
+.mod-description :deep(img) {
+    display: block;
+    max-width: 100%;
+    border-radius: 0.75rem;
+    margin: 0.9rem 0;
+}
+
+.mod-description :deep(table) {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.mod-description :deep(th),
+.mod-description :deep(td) {
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0.7rem;
+    text-align: left;
+}
+
+.mod-description :deep(tr:last-child td) {
+    border-bottom: none;
+}
+
+.mod-description :deep(th) {
+    background: var(--muted);
+    font-weight: 600;
 }
 </style>
+

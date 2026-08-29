@@ -29,6 +29,7 @@ export interface IAiChatMessageMetadata {
     createdAt?: number;
     finishReason?: string;
     modelId?: string;
+    reasoningMs?: number;
     totalTokens?: number;
 }
 
@@ -470,18 +471,20 @@ export const useAiChatStore = defineStore("AiChat", () => {
             return;
         }
 
-        const [savedBaseUrl, savedApiKey] = await Promise.all([
-            PersistentStore.get<string>("agentbaseUrl", ""),
-            PersistentStore.get<string>("agentApiKey", ""),
-        ]);
+        // apiKey 已迁移到加密存储，由 settings store 的 SecretStore.useValue 负责水合；
+        // 这里再从明文 store 读一次只会拿到被清空的旧键，反而可能覆盖真实凭据。
+        const savedBaseUrl = await PersistentStore.get<string>(
+            "agentbaseUrl",
+            "",
+        );
 
         if (!baseUrl.value.trim() && savedBaseUrl?.trim()) {
             baseUrl.value = savedBaseUrl.trim();
         }
 
-        if (!apiKey.value.trim() && savedApiKey?.trim()) {
-            apiKey.value = savedApiKey.trim();
-        }
+        // 必须等加密凭据读完，否则下游会把“尚未读到 apiKey”误判为“未配置”，
+        // 导致会话不被创建，后续编辑/重生成报“AI 会话尚未就绪”。
+        await settings.waitForCredentials();
 
         aiConfigurationHydrated.value = true;
     }
@@ -697,6 +700,9 @@ export const useAiChatStore = defineStore("AiChat", () => {
             preserveMessages,
         );
 
+        // 思考计时只在单次流式响应内有效，随会话重建重置。
+        let reasoningStartedAt = 0;
+
         try {
             if (
                 previousChat &&
@@ -722,9 +728,32 @@ export const useAiChatStore = defineStore("AiChat", () => {
                         },
                         messageMetadata: ({ part }) => {
                             if (part.type === "start") {
+                                reasoningStartedAt = 0;
+
                                 return {
                                     createdAt: Date.now(),
                                     modelId,
+                                } satisfies IAiChatMessageMetadata;
+                            }
+
+                            // 记录思考开始时间，配合 reasoning-end 算出耗时用于展示。
+                            if (part.type === "reasoning-start") {
+                                reasoningStartedAt = Date.now();
+
+                                return undefined;
+                            }
+
+                            if (part.type === "reasoning-end") {
+                                if (!reasoningStartedAt) {
+                                    return undefined;
+                                }
+
+                                const reasoningMs =
+                                    Date.now() - reasoningStartedAt;
+                                reasoningStartedAt = 0;
+
+                                return {
+                                    reasoningMs,
                                 } satisfies IAiChatMessageMetadata;
                             }
 
@@ -1043,6 +1072,26 @@ export const useAiChatStore = defineStore("AiChat", () => {
             deep: true,
         },
     );
+
+    // 凭据/地址在设置页改动后，会话需要重建；否则从未配置变为已配置时
+    // chat 仍为 null，编辑/重生成会一直报“AI 会话尚未就绪”。
+    watch([apiKey, baseUrl], async () => {
+        if (!initialized.value) {
+            return;
+        }
+
+        if (!hasConfiguration.value) {
+            await disposeSession();
+            sessionError.value = configurationErrorMessage.value;
+            return;
+        }
+
+        if (!selectedModelId.value.trim()) {
+            return;
+        }
+
+        await rebuildSession(true);
+    });
 
     watch(status, (nextStatus, previousStatus) => {
         if (!chat.value) {

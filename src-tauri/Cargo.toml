@@ -1,6 +1,6 @@
 [package]
 name = "gloss-mod-manager"
-version = "2.2.0"
+version = "2.3.0"
 description = "Gloss Mod Manager is a comprehensive modern game mod manager"
 authors = ["小莫"]
 edition = "2021"
@@ -35,6 +35,8 @@ tauri-plugin-http = "2"
 tauri-plugin-log = "2"
 log = "0.4"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+# MCP 服务鉴权令牌需要密码学安全的随机源。
+uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"

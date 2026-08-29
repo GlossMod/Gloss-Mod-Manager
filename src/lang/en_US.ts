@@ -118,6 +118,11 @@ const lang = {
             unknownSize: "Unknown size",
             emptyDash: "-",
             searchMods: "Search Mods",
+            pageTitle: "Explore Mods",
+            pageSubtitle: "Browse and download mods from every supported platform",
+            translationSettings: "Translation settings",
+            translationNeedsAi: "Configure AI first to use translation.",
+            providerTabs: "Mod platforms",
         },
         actions: {
             expandFilters: "Expand filters",
@@ -133,6 +138,7 @@ const lang = {
             openSource: "Open source",
             previousPage: "Previous",
             nextPage: "Next",
+            jumpPage: "Go",
         },
         filters: {
             allSources: "All sources",

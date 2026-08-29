@@ -224,9 +224,59 @@ export class SevenZip {
     }
 
     /**
+     * 校验压缩包条目路径是否会逆向穿越到目标目录之外（zip slip）。
+     *
+     * mod 压缩包来自不可信来源，7-Zip 虽然自身会做一定防护，
+     * 但这里显式拦一道，避免依赖外部工具的默认行为。
+     */
+    private static assertSafeEntryPaths(entries: SevenZipArchiveEntry[]) {
+        for (const entry of entries) {
+            const normalizedPath = entry.path.replace(/\\/gu, "/");
+
+            if (/^[A-Za-z]:/u.test(normalizedPath)) {
+                throw new Error(
+                    `压缩包内存在绕到绝对路径的条目，已阻止解压：${entry.path}`,
+                );
+            }
+
+            if (normalizedPath.startsWith("/")) {
+                throw new Error(
+                    `压缩包内存在绝对路径条目，已阻止解压：${entry.path}`,
+                );
+            }
+
+            if (normalizedPath.split("/").includes("..")) {
+                throw new Error(
+                    `压缩包内存在上级目录穿越条目，已阻止解压：${entry.path}`,
+                );
+            }
+        }
+    }
+
+    /**
      * 解压指定压缩包到目标目录。
      */
     public static async extractArchive(options: SevenZipExtractOptions) {
+        // 解压前先列出条目做穿越校验；列表失败（如加密包）时不阻断正常流程。
+        try {
+            const listResult = await SevenZip.listArchive({
+                archivePath: options.archivePath,
+                password: options.password,
+            });
+
+            SevenZip.assertSafeEntryPaths(listResult.entries);
+        } catch (error: unknown) {
+            if (
+                error instanceof Error &&
+                error.message.includes("已阻止解压")
+            ) {
+                throw error;
+            }
+
+            console.warn("无法预先校验压缩包条目路径，已跳过穿越检查。");
+            console.warn(error);
+        }
+
         const args = ["x", options.archivePath, `-o${options.outputDirectory}`];
 
         SevenZip.appendPasswordArg(args, options.password);

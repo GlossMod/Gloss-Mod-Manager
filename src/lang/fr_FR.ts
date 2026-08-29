@@ -81,6 +81,11 @@ const lang = {
             unknownTime: "Date inconnue",
             unknownSize: "Taille inconnue",
             searchMods: "Rechercher des mods",
+            pageTitle: "Explorer les mods",
+            pageSubtitle: "Parcourez et téléchargez des mods depuis toutes les plateformes",
+            translationSettings: "Paramètres de traduction",
+            translationNeedsAi: "Configurez d'abord l'IA pour utiliser la traduction.",
+            providerTabs: "Plateformes de mods",
         },
         actions: {
             ...enUS.explore.actions,
@@ -97,6 +102,7 @@ const lang = {
             openSource: "Ouvrir la source",
             previousPage: "Précédent",
             nextPage: "Suivant",
+            jumpPage: "Aller",
         },
         filters: {
             ...enUS.explore.filters,

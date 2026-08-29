@@ -57,10 +57,6 @@ export class FileHandler {
         return `'${value.replace(/'/g, "''")}'`;
     }
 
-    private static toCmdLiteral(value: string) {
-        return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
-    }
-
     private static toShellOutputBytes(output: unknown) {
         if (output instanceof Uint8Array) {
             return output;
@@ -161,45 +157,40 @@ export class FileHandler {
             throw new Error("软链接源路径或目标路径不能为空。");
         }
 
-        const runMklink = async (linkArgs: string[]) => {
-            const commandLine = ["mklink", ...linkArgs].join(" ");
+        // 早期实现经由 cmd.exe /c mklink 创建链接，但 cmd 的引号与 % 解析规则无法
+        // 可靠转义，含特殊字符的路径可能逗出参数。改用 PowerShell 原生 cmdlet，
+        // 路径始终以字符串字面量传入，不再经过二次命令行解析。
+        const runNewItem = async (itemType: "SymbolicLink" | "Junction") => {
             const script = [
                 "$ErrorActionPreference = 'Stop'",
-                `$commandLine = ${FileHandler.toPowerShellLiteral(commandLine)}`,
-                "cmd.exe /d /s /c $commandLine",
-                "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+                `$linkPath = ${FileHandler.toPowerShellLiteral(targetPath)}`,
+                `$targetPath = ${FileHandler.toPowerShellLiteral(sourcePath)}`,
+                `New-Item -ItemType ${itemType} -Path $linkPath -Target $targetPath -Force | Out-Null`,
             ].join("; ");
 
             const args = [
                 "-NoLogo",
                 "-NoProfile",
                 "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
                 "-Command",
                 script,
             ];
 
-            console.log({
-                commandName: "powershell",
-                args,
-                commandLine,
-            });
-
             await FileHandler.executeShellCommand("powershell", args);
         };
 
-        const literalTarget = FileHandler.toCmdLiteral(targetPath);
-        const literalSource = FileHandler.toCmdLiteral(sourcePath);
-
         if (!isDirectory) {
-            await runMklink([literalTarget, literalSource]);
+            await runNewItem("SymbolicLink");
             return;
         }
 
         try {
-            await runMklink(["/D", literalTarget, literalSource]);
+            await runNewItem("SymbolicLink");
         } catch {
             // Windows 下目录符号链接可能受权限限制，失败时退回 Junction。
-            await runMklink(["/J", literalTarget, literalSource]);
+            await runNewItem("Junction");
         }
     }
 
