@@ -47,7 +47,7 @@
         "ai": "^7.0.83",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
-        "dompurify": "3.2.7",
+        "dompurify": "3.4.13",
         "element-plus-message": "^0.0.0-dev.1",
         "firebase": "^12.12.1",
         "ini": "^6.0.0",
