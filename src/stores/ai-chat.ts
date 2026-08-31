@@ -30,6 +30,7 @@ export interface IAiChatMessageMetadata {
     finishReason?: string;
     modelId?: string;
     reasoningMs?: number;
+    reasoningMsByPartId?: Record<string, number>;
     totalTokens?: number;
 }
 
@@ -708,7 +709,8 @@ export const useAiChatStore = defineStore("AiChat", () => {
         );
 
         // 思考计时只在单次流式响应内有效，随会话重建重置。
-        let reasoningStartedAt = 0;
+        const reasoningStartedAt = new Map<string, number>();
+        const reasoningMsByPartId: Record<string, number> = {};
 
         try {
             if (
@@ -735,7 +737,7 @@ export const useAiChatStore = defineStore("AiChat", () => {
                         },
                         messageMetadata: ({ part }) => {
                             if (part.type === "start") {
-                                reasoningStartedAt = 0;
+                                reasoningStartedAt.clear();
 
                                 return {
                                     createdAt: Date.now(),
@@ -743,24 +745,36 @@ export const useAiChatStore = defineStore("AiChat", () => {
                                 } satisfies IAiChatMessageMetadata;
                             }
 
-                            // 记录思考开始时间，配合 reasoning-end 算出耗时用于展示。
+                            // 按 reasoning part ID 记录开始时间，避免多段思考互相覆盖。
                             if (part.type === "reasoning-start") {
-                                reasoningStartedAt = Date.now();
+                                if (part.id) {
+                                    reasoningStartedAt.set(part.id, Date.now());
+                                }
 
                                 return undefined;
                             }
 
                             if (part.type === "reasoning-end") {
-                                if (!reasoningStartedAt) {
+                                if (!part.id) {
                                     return undefined;
                                 }
 
-                                const reasoningMs =
-                                    Date.now() - reasoningStartedAt;
-                                reasoningStartedAt = 0;
+                                const startedAt = reasoningStartedAt.get(part.id);
+                                reasoningStartedAt.delete(part.id);
+
+                                if (!startedAt) {
+                                    return undefined;
+                                }
+
+                                reasoningMsByPartId[part.id] = Math.max(
+                                    0,
+                                    Date.now() - startedAt,
+                                );
 
                                 return {
-                                    reasoningMs,
+                                    reasoningMsByPartId: {
+                                        ...reasoningMsByPartId,
+                                    },
                                 } satisfies IAiChatMessageMetadata;
                             }
 

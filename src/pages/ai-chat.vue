@@ -327,9 +327,32 @@ function escapeHtml(value: string) {
         .replace(/'/gu, "&#039;");
 }
 
+function getPartKey(part: IAiChatMessagePart, index: number) {
+    if ("id" in part && typeof part.id === "string" && part.id) {
+        return part.id;
+    }
+
+    return `index-${index}`;
+}
+
 function renderMarkdown(text: string) {
     // 模型输出同样不可信（可被工具返回的外部内容间接注入），渲染前统一净化。
     return sanitizeHtml(markdown.render(text));
+}
+
+const markdownCache = new WeakMap<object, { text: string; html: string }>();
+
+function renderPartMarkdown(part: IAiChatMessagePart) {
+    const text = getPartText(part);
+    const cached = markdownCache.get(part);
+
+    if (cached?.text === text) {
+        return cached.html;
+    }
+
+    const html = renderMarkdown(text);
+    markdownCache.set(part, { text, html });
+    return html;
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
@@ -464,11 +487,22 @@ function resolveModelLabel(modelId?: string) {
     return matchedModel?.name || modelId;
 }
 
-function getReasoningLabel(message: IAiChatUIMessage) {
-    const reasoningMs = message.metadata?.reasoningMs;
+function getReasoningLabel(
+    message: IAiChatUIMessage,
+    part: IAiChatMessagePart,
+) {
+    const partId = isReasoningPart(part) ? part.id : undefined;
+    const reasoningMs =
+        (partId
+            ? message.metadata?.reasoningMsByPartId?.[partId]
+            : undefined) ?? message.metadata?.reasoningMs;
 
-    // 流式过程中还没拿到耗时，先显示进行中的文案。
-    if (!reasoningMs) {
+    // 当前思考段尚未结束时显示进行中的文案。
+    if (isReasoningPart(part) && part.state === "streaming" && reasoningMs === undefined) {
+        return "思考中…";
+    }
+
+    if (reasoningMs === undefined) {
         return isGenerating.value ? "思考中…" : "已思考";
     }
 
@@ -1032,12 +1066,12 @@ async function stopLocalServer() {
                         <div v-else class="space-y-3">
                             <template
                                 v-for="(part, index) in message.parts"
-                                :key="`${message.id}-${index}`"
+                                :key="`${message.id}-${getPartKey(part, index)}`"
                             >
                                 <div
                                     v-if="isTextPart(part)"
                                     class="ai-markdown"
-                                    v-html="renderMarkdown(getPartText(part))"
+                                    v-html="renderPartMarkdown(part)"
                                 ></div>
 
                                 <Accordion
@@ -1046,7 +1080,7 @@ async function stopLocalServer() {
                                     collapsible
                                 >
                                     <AccordionItem
-                                        :value="`reasoning-${message.id}-${index}`"
+                                        :value="`reasoning-${message.id}-${getPartKey(part, index)}`"
                                         class="border-0"
                                     >
                                         <AccordionTrigger
@@ -1059,7 +1093,10 @@ async function stopLocalServer() {
                                                     class="h-4 w-4 text-primary"
                                                 />
                                                 {{
-                                                    getReasoningLabel(message)
+                                                    getReasoningLabel(
+                                                        message,
+                                                        part,
+                                                    )
                                                 }}
                                             </span>
                                         </AccordionTrigger>
@@ -1067,9 +1104,7 @@ async function stopLocalServer() {
                                             <div
                                                 class="ai-markdown border-l-2 border-border/60 pl-4 text-sm leading-7 text-muted-foreground"
                                                 v-html="
-                                                    renderMarkdown(
-                                                        getPartText(part),
-                                                    )
+                                                    renderPartMarkdown(part)
                                                 "
                                             ></div>
                                         </AccordionContent>
