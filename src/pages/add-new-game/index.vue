@@ -217,8 +217,9 @@ const discussionLabelOptions = computed(() => {
         }
     }
 
-    return [...labels.values()]
-        .sort((current, next) => current.name.localeCompare(next.name, "zh-CN"));
+    return [...labels.values()].sort((current, next) =>
+        current.name.localeCompare(next.name, "zh-CN"),
+    );
 });
 
 const activeLabelName = computed(() =>
@@ -231,15 +232,16 @@ const activeTitleSearch = computed(() =>
 );
 
 const filteredDiscussionList = computed(() => {
-    return discussionList.value.filter((discussion) =>
-        (!activeLabelName.value ||
-            discussion.labels.some(
-                (label) => label.name === activeLabelName.value,
-            )) &&
-        (!activeTitleSearch.value ||
-            discussion.title
-                .toLocaleLowerCase("zh-CN")
-                .includes(activeTitleSearch.value)),
+    return discussionList.value.filter(
+        (discussion) =>
+            (!activeLabelName.value ||
+                discussion.labels.some(
+                    (label) => label.name === activeLabelName.value,
+                )) &&
+            (!activeTitleSearch.value ||
+                discussion.title
+                    .toLocaleLowerCase("zh-CN")
+                    .includes(activeTitleSearch.value)),
     );
 });
 
@@ -443,10 +445,6 @@ onMounted(async () => {
                         >
                             新增游戏请求
                         </h1>
-                        <p class="max-w-2xl text-muted-foreground">
-                            列表页负责浏览已有请求，发帖入口改为弹窗，帖子详情仍使用独立路由承载
-                            Markdown 正文与评论。
-                        </p>
                     </div>
                 </div>
 
@@ -513,14 +511,14 @@ onMounted(async () => {
                             type="search"
                             placeholder="搜索标题..."
                             aria-label="按标题搜索讨论"
-                            class="w-full sm:w-[240px]"
+                            class="w-full sm:w-60"
                         />
                         <Select
                             v-model="selectedLabelName"
                             :disabled="!discussionLabelOptions.length"
                         >
                             <SelectTrigger
-                                class="w-full sm:w-[220px]"
+                                class="w-full sm:w-55"
                                 aria-label="按 Labels 筛选讨论"
                             >
                                 <SelectValue placeholder="按 Labels 筛选" />
@@ -550,9 +548,7 @@ onMounted(async () => {
                                             <span class="truncate">{{
                                                 label.name
                                             }}</span>
-                                            <span
-                                                class="text-muted-foreground"
-                                            >
+                                            <span class="text-muted-foreground">
                                                 ({{ label.count }})
                                             </span>
                                         </span>
@@ -782,9 +778,7 @@ onMounted(async () => {
                                             >
                                                 {{ field.label }}
                                             </dt>
-                                            <dd
-                                                class="break-words text-sm [overflow-wrap:anywhere]"
-                                            >
+                                            <dd class="wrap-break-word text-sm">
                                                 <a
                                                     v-if="
                                                         field.value.startsWith(
@@ -854,7 +848,9 @@ onMounted(async () => {
                                         <Badge
                                             v-for="label in discussion.labels"
                                             :key="label.id"
-                                            :title="label.description || label.name"
+                                            :title="
+                                                label.description || label.name
+                                            "
                                             variant="outline"
                                             class="max-w-40 truncate"
                                             :style="
@@ -870,7 +866,7 @@ onMounted(async () => {
                                         </span>
                                     </div>
                                     <div
-                                        class="line-clamp-2 break-all text-sm text-muted-foreground [overflow-wrap:anywhere]"
+                                        class="line-clamp-2 break-all text-sm text-muted-foreground wrap-anywhere"
                                     >
                                         {{
                                             createDiscussionExcerpt(
