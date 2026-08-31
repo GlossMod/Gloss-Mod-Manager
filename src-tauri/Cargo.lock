@@ -2202,7 +2202,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "gloss-mod-manager"
-version = "2.3.0"
+version = "2.3.1"
 dependencies = [
  "log",
  "serde",

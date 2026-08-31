@@ -392,11 +392,18 @@ watch(dialogOpen, (opened) => {
             <DialogHeader>
                 <DialogTitle class="flex items-center gap-3"
                     >新增游戏
-                    <Button size="sm" as-child>
+                    <Button size="sm" variant="outline" as-child>
                         <a
                             href="https://gmm.aoe.top/add-new-game"
                             target="_blank"
                             >申请新游戏</a
+                        >
+                    </Button>
+                    <Button size="sm" variant="outline" as-child>
+                        <a
+                            href="https://www.bilibili.com/video/BV1Dvtp6REUP"
+                            target="_blank"
+                            >视频教程</a
                         >
                     </Button>
                 </DialogTitle>
