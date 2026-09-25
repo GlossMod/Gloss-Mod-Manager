@@ -27,6 +27,12 @@ export interface IThirdPartyListQuery {
 export interface IThirdPartyModFile {
     id: string;
     name: string;
+    /**
+     * 服务端返回的真实文件名，通常带扩展名。
+     * 列表展示沿用 name（显示名），落盘命名优先取 fileName，
+     * 否则显示名不带扩展名时会写出无后缀的文件。
+     */
+    fileName?: string;
     version: string;
     size: number;
     createdAt: string;
@@ -1057,6 +1063,7 @@ function normalizeNexusModsFiles(
             return {
                 id: String(item.file_id),
                 name: item.name || item.file_name,
+                fileName: item.file_name || "",
                 version: item.version || item.mod_version || "",
                 size: item.size_in_bytes || item.size_kb * 1024 || 0,
                 createdAt:
