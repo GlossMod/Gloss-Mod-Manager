@@ -141,6 +141,8 @@ const Games = {
     "Hollow Knight": "空洞骑士",
     "Assassins Creed Odyssey": "刺客信条 奥德赛",
     "Sonic Racing CrossWorlds": "索尼克赛车：交叉世界",
+    "Phantom Blade Zero": "影之刃零",
+    "Probably Stolen": "深空当铺：可能是偷的",
 };
 
 const lang = {

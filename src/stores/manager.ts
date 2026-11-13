@@ -642,7 +642,8 @@ export const useManager = defineStore("Manager", () => {
                         if (
                             item.modType === undefined ||
                             item.modType === null ||
-                            item.modType === ""
+                            item.modType === "" ||
+                            (String(item.modType) === "99" && !mod.isInstalled)
                         ) {
                             mod.modType = await detectModType(mod);
                         }
