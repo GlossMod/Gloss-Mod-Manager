@@ -625,10 +625,9 @@ async function prepareAria2(target: ResolvedTarget) {
     const sourceRoot = dirname(configurePath);
 
     log("Building aria2 from the official source tarball for this platform");
-    // 显式关掉全部可选依赖，否则 configure 会自动链接构建机上的 Homebrew 库
+    // 显式关掉非必要依赖，否则 configure 会自动链接构建机上的 Homebrew 库
     // （如 c-ares、libssh2），产物拷到其他机器后会因找不到 dylib 而无法启动。
-    // aria2 在这些选项关闭时会使用自带实现，HTTPS 仍由系统原生 TLS 提供。
-    const configureArgs = [
+    const configureArgs: string[] = [
         "./configure",
         "--without-libcares",
         "--without-libssh2",
@@ -639,13 +638,15 @@ async function prepareAria2(target: ResolvedTarget) {
         "--without-libnettle",
         "--without-libgcrypt",
         "--without-gnutls",
-        "--without-openssl",
         "--disable-nls",
     ];
 
     if (target.platform === "macos") {
         // macOS 下使用系统 Security.framework 提供 TLS。
-        configureArgs.push("--with-appletls");
+        configureArgs.push("--without-openssl", "--with-appletls");
+    } else {
+        // Linux 没有 AppleTLS，必须启用 OpenSSL 才能编译并支持 HTTPS。
+        configureArgs.push("--with-openssl");
     }
 
     runCommand("sh", configureArgs, sourceRoot);
