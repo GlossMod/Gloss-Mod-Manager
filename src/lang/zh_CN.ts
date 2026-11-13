@@ -140,6 +140,7 @@ const Games = {
     "Borderlands 3": "无主之地3",
     "Hollow Knight": "空洞骑士",
     "Assassins Creed Odyssey": "刺客信条 奥德赛",
+    "Sonic Racing CrossWorlds": "索尼克赛车：交叉世界",
 };
 
 const lang = {

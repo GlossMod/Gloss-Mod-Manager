@@ -8,6 +8,7 @@ const gameNames = Object.fromEntries(
 
 const lang = {
     ...gameNames,
+    "Sonic Racing CrossWorlds": "Sonic Racing: CrossWorlds",
     common: {
         select: "Select",
         delete: "Delete",
