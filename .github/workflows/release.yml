@@ -38,7 +38,7 @@ jobs:
                       args: --target x86_64-unknown-linux-gnu
                     # 这里显式使用 Intel 与 Apple Silicon 原生 runner，避免 sidecar 在交叉构建时产出错误架构。
                     - name: macOS arm64
-                      runner: macos-14
+                      runner: macos-15
                       target: aarch64-apple-darwin
                       args: --target aarch64-apple-darwin --bundles app,dmg
         env:
