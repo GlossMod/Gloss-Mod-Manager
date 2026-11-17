@@ -95,8 +95,11 @@ function buildOutputFileName(
     file: IThirdPartyModFile,
     downloadUrl: string,
 ) {
+    // 优先使用服务端返回的真实文件名（一定带扩展名）。
+    // 只回退到 name 会拿到不含扩展名的显示名（如 "Craft From Containers"），
+    // 一旦 URL 里也提取不到后缀，落盘文件就会缺少扩展名而无法被识别。
     const baseName = sanitizeFileName(
-        file.name || `${mod.source}-${mod.id}-${file.id}`,
+        file.fileName || file.name || `${mod.source}-${mod.id}-${file.id}`,
     );
     const currentExtension = getFileNameExtension(baseName);
 
