@@ -3781,9 +3781,9 @@ he@1.2.0, he@^1.2.0:
   integrity sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==
 
 hono@^4.11.4:
-  version "4.13.1"
-  resolved "https://registry.yarnpkg.com/hono/-/hono-4.13.1.tgz#d4a606b792954d07a6215d12c01b7cf59da03cbc"
-  integrity sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==
+  version "4.13.18"
+  resolved "https://registry.yarnpkg.com/hono/-/hono-4.13.18.tgz#c461afed809cf810215b8ec08117ab3e62437fb1"
+  integrity sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==
 
 hookable@^5.5.3:
   version "5.5.3"
