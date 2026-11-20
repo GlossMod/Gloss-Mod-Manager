@@ -1214,9 +1214,9 @@
     yargs "^17.7.2"
 
 "@hono/node-server@^1.19.9 || ^2.0.5":
-  version "2.1.5"
-  resolved "https://registry.yarnpkg.com/@hono/node-server/-/node-server-2.1.5.tgz#273db93e8bfb44ef361e55f3d00048013668aa09"
-  integrity sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==
+  version "2.1.9"
+  resolved "https://registry.yarnpkg.com/@hono/node-server/-/node-server-2.1.9.tgz#0e4fc55e787316d882c6f04fd5577e6a8ad55c72"
+  integrity sha512-Sk4NQd3GFY0WZWCzndwFMPwJhtD0y9qjsQ+pjID0/03nK9pxyBCUoUHCho8QYBLBVhi0ssL8UkNPHqbgSOFPIQ==
 
 "@internationalized/date@^3.5.0":
   version "3.12.0"
